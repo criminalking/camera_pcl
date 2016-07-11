@@ -1,36 +1,48 @@
-// create a subscriber and a publisher for PointCloud2 data
-
 #include <ros/ros.h>
 // PCL specific includes
 #include <sensor_msgs/PointCloud2.h>
-#include <pcl/point_cloud.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
+// c++
+#include <iostream>
+#include <stdio.h>
+#include <cv_bridge/cv_bridge.h>
+#include "opencv2/opencv.hpp"
+//#include <imgcodecs/imgcodecs.hpp>
+//#include <core/core.hpp>
+//#include <highgui/highgui.hpp>
+#include "opencv2/imgcodecs/imgcodecs.hpp"
+#include "opencv2/core/core.hpp"
+#include "opencv2/highgui/highgui.hpp"
 
 ros::Publisher pub;
 
 void 
 cloud_cb (const sensor_msgs::PointCloud2ConstPtr& cloud_msg)
 {
-  // Container for original & filtered data
-  pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2; 
-  pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
-  pcl::PCLPointCloud2 cloud_filtered;
+  
+  // // Container for original & filtered data
+  // pcl::PCLPointCloud2* cloud = new pcl::PCLPointCloud2; 
+  // pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
+  // pcl::PCLPointCloud2 cloud_filtered;
 
-  // Convert to PCL data type
-  pcl_conversions::toPCL(*cloud_msg, *cloud);
+  // // Convert to PCL data type
+  // pcl_conversions::toPCL(*cloud_msg, *cloud);
 
-  // Perform the actual filtering
-  pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-  sor.setInputCloud (cloudPtr);
-  sor.setLeafSize (0.1, 0.1, 0.1);
-  sor.filter (cloud_filtered);
+  // // Perform the actual filtering
+  // pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+  // sor.setInputCloud (cloudPtr);
+  // sor.setLeafSize (0.1, 0.1, 0.1);
+  // sor.filter (cloud_filtered);
 
-  // Convert to ROS data type
+  // // Convert to ROS data type
   sensor_msgs::PointCloud2 output;
-  pcl_conversions::fromPCL(cloud_filtered, output);
+  // pcl_conversions::fromPCL(cloud_filtered, output);
 
+  output = *cloud_msg;
   // Publish the data
   pub.publish (output);
 }
@@ -41,44 +53,12 @@ main (int argc, char** argv)
   // Initialize ROS
   ros::init (argc, argv, "my_pcl_tutorial");
   ros::NodeHandle nh;
-  
-  // Fill in the cloud data
-  pcl::PointCloud<pcl::PointXYZ> cloud;
-  cloud.width = 5;
-  cloud.height = 1;
-  cloud.is_dense = true;
-  cloud.points.resize(cloud.width * cloud.height);
-
-  cloud.header.stamp = pcl_conversions::toPCL(ros::Time::now());
-  cloud.header.frame_id = 'map';
-
-  for (size_t i = 0; i < cloud.points.size(); ++i)
-    {
-      cloud.points[i].x = 3 * i + 1;
-      cloud.points[i].y = 3 * i + 2;
-      cloud.points[i].z = 3 * i + 3;
-    }
 
   // Create a ROS subscriber for the input point cloud
-  //ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
+  ros::Subscriber sub = nh.subscribe ("input", 1, cloud_cb);
 
   // Create a ROS publisher for the output point cloud
-  pub = nh.advertise<sensor_msgs::PointCloud2> ("pcl_output", 1);
-
-  // convert pcl::PointCloud<pcl::PointXYZ> to sensor_msgs::PointCloud2
-  sensor_msgs::PointCloud2 output;
-  output.header.frame_id = frame;
-  output.header.stamp = ros::Time::now();
-
-  while(ros::ok())
-    {
-      pcl::toROSMsg(cloud, output);
-      //std::cout<<cloud.points[0]<<std::endl;
-      //std::cout<<output<<std::endl;
-      
-      // Publish the data
-      pub.publish (output);
-    }
+  pub = nh.advertise<sensor_msgs::PointCloud2> ("output", 1);
 
   // Spin
   ros::spin ();

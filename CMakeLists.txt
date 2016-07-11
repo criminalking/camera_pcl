@@ -19,9 +19,16 @@ set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
 #for PCL
 find_package(PCL 1.8.0 REQUIRED)
-include_directories(${PCL_INCLUDE_DIRS} )
+include_directories(${PCL_INCLUDE_DIRS})
 link_directories(${PCL_LIBRARY_DIRS})
 add_definitions(${PCL_DEFINITIONS})
+
+#for openCV
+find_package(cv_bridge)
+#find_package(catkin REQUIRED OpenCV)
+#find_package(OpenCV)
+#include_directories(${OpenCV_INCLUDE_DIRS})
+#target_link_libraries(example ${OpenCV_LIBRARIES})
 
 #uncomment if you have defined messages
 #rosbuild_genmsg()
@@ -34,4 +41,5 @@ add_definitions(${PCL_DEFINITIONS})
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
 rosbuild_add_executable(example src/example.cpp)
+#rosbuild_add_library(${PROJECT_NAME} src/Camera.cpp)
 #target_link_libraries(example ${PCL_LIBRARIES})

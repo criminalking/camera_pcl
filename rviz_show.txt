@@ -1,0 +1,9 @@
+RVIZ成功显示经验
+
+1. roscore
+2. rosrun pcl_ros pcd_to_pointcloud XXX.pcd 0.5 _frame_id:=/base_link
+# 将该pcd转化成一个topic供之后的input使用
+3. rosrun <package_name> <可执行文件> input:=/cloud_pcd
+# 可执行文件一般在该package的bin下，/cloud_pcd是2步骤转化出来的topic，可通过rostopic list寻找
+4. rosrun rviz rviz 
+# 在rviz中修改map为base_link（就是在_frame_id中你选择使用的坐标系，如果没有选择默认为base_link）
