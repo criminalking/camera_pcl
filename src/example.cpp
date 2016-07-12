@@ -38,6 +38,8 @@ main (int argc, char** argv)
   msg->is_dense = false;
   msg->points.resize(msg->width * msg->height);
 
+  cv::Mat left(1,1,CV_8UC1);
+
   ros::Rate loop_rate(4);
   while (nh.ok())
   {
