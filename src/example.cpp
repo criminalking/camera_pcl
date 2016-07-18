@@ -1,6 +1,7 @@
 #include <iostream>
 #include <stdio.h>
 #include <math.h>
+#include <fstream>
 #include <ros/ros.h>
 #include "MoveSenseCamera.h"
 // PCL specific includes
@@ -22,23 +23,20 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-#define K 30
+#define K 20
 
-void fit_plane(int height, int width,  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,  pcl::PointCloud<pcl::PointXYZ>::Ptr fit_cloud)
+void fit_plane(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, pcl::PointCloud<pcl::PointXYZ>::Ptr fit_cloud)
 {
   // save the image left and disp
   //cv::imwrite( "left.jpg", left );
   //cv::imwrite( "disp.jpg", disp );
   // select K*K pixels around the central pixel
 
-  int index = 0;
-  for (int u = height/2-K; u < height/2+K; ++u)
-    for (int v = width/2-K; v < width/2+K; ++v)
+  for (int index = 0; index < 4*K*K; ++index)
       {
-	fit_cloud->points[index].x = cloud->points[u*width+v].x * 255.0f;
-	fit_cloud->points[index].y = cloud->points[u*width+v].y * 255.0f;
-	fit_cloud->points[index].z = cloud->points[u*width+v].z * 255.0f;
-	index++;
+	fit_cloud->points[index].x = cloud->points[index].x * 255.0f;
+	fit_cloud->points[index].y = cloud->points[index].y * 255.0f;
+	fit_cloud->points[index].z = cloud->points[index].z * 255.0f;
       }
   // fitting a plane(use point clouds)
   pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
@@ -74,13 +72,19 @@ void fit_plane(int height, int width,  pcl::PointCloud<pcl::PointXYZ>::Ptr cloud
   error /= (4 * K * K);	      
   double distance = -coefficients->values[3];
 	      
-  if (abs(ave - distance) <= 5)
+  if (abs(ave - distance) <= 2 && pc > 0.9999)
     {
       std::cout << pa << " " << pb << " " << pc << " " << pd << std::endl;
       std::cout << "error = " << error << " mm  ";
       std::cout << "ave = " << ave << " mm  ";
       // show z-axis distance
       std::cout << "distance = " << distance << " mm" << std::endl;
+
+      // write in .txt
+      std::ofstream out;
+      out.open("out.txt", std::ios::app);
+      out << error << " " << (ave + distance)/2 << "\n";
+      out.close();
     }
 	    
 }
@@ -108,9 +112,9 @@ main (int argc, char** argv)
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZ>);
   cloud->header.frame_id = "map";
-  cloud->height = height;
-  cloud->width = width;
-  cloud->is_dense = false;
+  cloud->height = K*2;
+  cloud->width = K*2;
+  cloud->is_dense = true;
   cloud->points.resize(cloud->width * cloud->height);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr fit_cloud (new pcl::PointCloud<pcl::PointXYZ>);
@@ -134,21 +138,19 @@ main (int argc, char** argv)
 	      memcpy(left.data+width*i,	img_data+(2*i)*width,width);
 	      memcpy(disp.data+width*i,img_data+(2*i+1)*width,width);
 	    }
-	  // draw a rec(2K * 2K) in the middle of the image "left"
+	  // draw a rect2K * 2K) in the middle of the image "left"
 	  cv::rectangle(
 			left,
-			//cv::Point(height/2-K, width/2-K),
-			//cv::Point(height/2+K, width/2+K),
 			cv::Rect(width/2-K, height/2-K, 2*K, 2*K),
 			cv::Scalar(255, 255, 255)
 			);
 	  cv::imshow("left",left);
-	  //cv::imshow("disp",disp);
+	  cv::imshow("disp",disp);
 
 	  //use mid-filter for disp
 	  //cv::medianBlur(disp, disp, 5);
 
-	  double b_multipy_f = 35981.122607;  //z = b*f/d,b_multipy_f = b*f
+	  double b_multipy_f = 35981.122607;  // b_multipy_f = b*f
 	  double f = 599.065803;
 	  double cu = 369.703644;
 	  double cv = 223.365112;
@@ -158,8 +160,10 @@ main (int argc, char** argv)
 	  double z = 0.00;
 	  double d_real = 0.0;
 
-	  for(int u = 0; u < height; ++u)
-	    for(int v = 0; v < width; ++v)
+	  // convert depth-image to point clouds
+	  int index = 0;
+	  for (int u = height/2-K; u < height/2+K; ++u)
+	    for (int v = width/2-K; v < width/2+K; ++v)
 	      {
 	  	int d = disp.at<uchar>(u,v);
 	  	if(d<32*4)
@@ -174,30 +178,28 @@ main (int argc, char** argv)
 	  	x = (u - cu) * z / f;
 	  	y = (v - cv) * z / f;
 
-		//if (z < 3000)
-		//{
 		// show in rviz
-		cloud->points[u*disp.cols+v].x = x/255.0f; // /255.0f is just for show in rviz, should be deleted later
-		cloud->points[u*disp.cols+v].y = y/255.0f;
-		cloud->points[u*disp.cols+v].z = z/255.0f;
-		// }
+		cloud->points[index].x = x/255.0f; // /255.0f is just for show in rviz
+		cloud->points[index].y = y/255.0f;
+		cloud->points[index].z = z/255.0f;
+		index++;
 	      }
 
-	  if (flag == true)
+	  if (flag == true) // this frame should be computed
 	    {
-	      fit_plane(height, width, cloud, fit_cloud);
+	      fit_plane(cloud, fit_cloud);
 	    }
 	  
 	  char key = cv::waitKey(100);
-	  if(key == 'q')
+	  if(key == 'q') // quit
 	    break;
-	  else if (key == 'c')
-	    {
-	      flag = false;
-	    }
-	  else if (key == 'o') // use this frame to test camera
+	  else if (key == 'o') // start to fit plane
 	    {
 	      flag = true;
+	    }
+	  else if (key == 'c') // close to fit plane
+	    {
+	      flag = false;
 	    }
 	}
     pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);

@@ -2,10 +2,17 @@
 
 import numpy as np
 import pylab as pl
-x = np.linspace(0, 20, 100)
-x = [2.775,1.336,1.283,0.999,0.853,0.746,0.642, 0.584] # x values
-y = [21.66,4.58,2.69,1.9254,1.489,1.067,0.8409, 0.446] # y values
-pl.plot(x, y, 'o') # draw points
-pl.show()
+f = open("../out.txt")
+x = []
+y = []
+for line in f:
+    info = line.split()
+    y.append(float(info[0]))
+    x.append(float(info[1]))
 
-# http://blog.csdn.net/ywjun0919/article/details/8692018
+results = {}
+coeffs = np.polyfit(x, y, 2)
+results = coeffs.tolist()
+p = np.poly1d(coeffs)                  
+pl.plot(x,y,'o',x,p(x))
+pl.show()
