@@ -360,4 +360,5 @@ namespace movesense
 	{
 		g_cds->SetDesireBin(value);
 	}
+
 }
