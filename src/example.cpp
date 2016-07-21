@@ -9,12 +9,16 @@ BiCamera::~BiCamera()
 void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) 
 {
   // select K*K pixels around the central pixel  
-  for (int index = 0; index < 4*K*K; ++index)
+  for (int index = 0; index < 4 * K * K; ++index)
       {
 	fit_cloud->points[index].x = cloud->points[index].x * 255.0f;
 	fit_cloud->points[index].y = cloud->points[index].y * 255.0f;
 	fit_cloud->points[index].z = cloud->points[index].z * 255.0f;
       }
+
+  //clock_t start, finish;
+  //double totaltime;
+  //start = clock();
   
   // fitting a plane(use point clouds)
   pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
@@ -30,6 +34,10 @@ void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud)
 	      
   seg.setInputCloud (fit_cloud);
   seg.segment (*inliers, *coefficients);
+
+  //finish = clock();
+  //totaltime = (double)(finish - start);
+  //std::cout << "\nRANSAC的运行时间为" << totaltime << "ms！" << std::endl;
 
   // print the coefficients of the plane
   double pa = coefficients->values[0];
@@ -63,7 +71,13 @@ void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud)
       out.open("out.txt", std::ios::app);
       out << error << " " << (ave + distance) / 2 << "\n";
       out.close();
-    }	    
+
+      // write in .txt
+      std::ofstream ti;
+      ti.open("time.txt", std::ios::app);
+      ti << K << " " << totaltime << "\n";
+      ti.close();
+    }
 }
 
 void BiCamera::Init(PC::Ptr cloud, PC::Ptr fit_cloud)

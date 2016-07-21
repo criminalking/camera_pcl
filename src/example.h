@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <fstream>
+#include <time.h>
 #include <ros/ros.h>
 #include "MoveSenseCamera.h"
 // PCL specific includes
@@ -23,7 +24,7 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-#define K 20
+#define K 10
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 class BiCamera
@@ -47,7 +48,7 @@ private:
   int width;
   int height;
   int len;
-  unsigned char * img_data;
+  unsigned char *img_data;
 
   // start or finish fitting plane
   bool flag;
