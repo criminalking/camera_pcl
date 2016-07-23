@@ -6,7 +6,7 @@ BiCamera::~BiCamera()
   delete loop_rate;
 }
 
-void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) 
+void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) // need K
 {
   // select K*K pixels around the central pixel  
   for (int index = 0; index < 4 * K * K; ++index)
@@ -66,21 +66,15 @@ void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud)
       // show z-axis distance
       std::cout << "distance = " << distance << " mm" << std::endl;
 
-      // write in .txt
-      std::ofstream out;
-      out.open("out.txt", std::ios::app);
-      out << error << " " << (ave + distance) / 2 << "\n";
-      out.close();
-
-      // write in .txt
-      std::ofstream ti;
-      ti.open("time.txt", std::ios::app);
-      ti << K << " " << totaltime << "\n";
-      ti.close();
+      // // write in .txt
+      // std::ofstream out;
+      // out.open("out.txt", std::ios::app);
+      // out << error << " " << (ave + distance) / 2 << "\n";
+      // out.close();
     }
 }
 
-void BiCamera::Init(PC::Ptr cloud, PC::Ptr fit_cloud)
+void BiCamera::Init(PC::Ptr cloud, PC::Ptr cloud2)
 {
   // ros publish
   pub = nh.advertise<PC> ("points2", 1);
@@ -100,15 +94,15 @@ void BiCamera::Init(PC::Ptr cloud, PC::Ptr fit_cloud)
 
   // set point clouds
   cloud->header.frame_id = "map";
-  cloud->height = K * 2;
-  cloud->width = K * 2;
-  cloud->is_dense = true;
+  cloud->height = height;
+  cloud->width = width;
+  cloud->is_dense = false;
   cloud->points.resize(cloud->width * cloud->height);
 
-  fit_cloud->height = K * 2;
-  fit_cloud->width = K * 2;
-  fit_cloud->is_dense = true;
-  fit_cloud->points.resize(fit_cloud->width * fit_cloud->height);
+  cloud2->height = height;
+  cloud2->width = width;
+  cloud2->is_dense = false;
+  cloud2->points.resize(cloud2->width * cloud2->height);
 }
 
 void BiCamera::DepthImageToPc(cv::Mat disp, PC::Ptr cloud) 
@@ -126,8 +120,8 @@ void BiCamera::DepthImageToPc(cv::Mat disp, PC::Ptr cloud)
 
   int index = 0;
   // just select neutral part of the image
-  for (int u = height / 2 - K; u < height / 2 + K; ++u)
-    for (int v = width / 2 - K; v < width / 2 + K; ++v)
+  for (int u = 0; u < height; ++u)
+    for (int v = 0; v < width; ++v)
       {
 	int d = disp.at<uchar>(u,v);
 	if(d < 32 * 4)
@@ -141,14 +135,17 @@ void BiCamera::DepthImageToPc(cv::Mat disp, PC::Ptr cloud)
 	z = kBMultipyF / d_real;
 
 	// show in rviz
-	cloud->points[index].x = x / 255.0f; // /255.0f is just for show in rviz
-	cloud->points[index].y = y / 255.0f;
-	cloud->points[index].z = z / 255.0f;
-	index++;
+	if (z < 2000)
+	  {
+	    cloud->points[index].x = x / 255.0f; // /255.0f is just for show in rviz
+	    cloud->points[index].y = y / 255.0f;
+	    cloud->points[index].z = z / 255.0f;
+	    index++;
+	  }
       }
 }
 
-void BiCamera::Run(PC::Ptr cloud, PC::Ptr fit_cloud)
+void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
 {
   loop_rate = new ros::Rate(4);
   flag = false;
@@ -164,13 +161,6 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr fit_cloud)
 	      memcpy(left.data + width * i, img_data + (2 * i) * width, width);
 	      memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
 	    }
-	  
-	  // draw a rect(2K * 2K) in the middle of the image "left"
-	  cv::rectangle(
-			left,
-			cv::Rect(width / 2 - K, height / 2 - K, 2 * K, 2 * K),
-			cv::Scalar(255, 255, 255)
-			);
       
 	  cv::imshow("left",left);
 	  cv::imshow("disp",disp);
@@ -184,10 +174,10 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr fit_cloud)
 	
 	  DepthImageToPc(disp, cloud);
 
-	  if (flag == true) // this frame should be computed
-	    {
-	      FitPlane(cloud, fit_cloud);
-	    }
+	  // if (flag == true) // this frame should be computed
+	  //   {
+	  //     FitPlane(cloud, fit_cloud);
+	  //   }
 	  
 	  char key = cv::waitKey(100);
 	  if(key == 'q') // quit
@@ -210,9 +200,9 @@ int main (int argc, char** argv)
 {
   ros::init (argc, argv, "pub_pcl");
   PC::Ptr cloud(new PC);
-  PC::Ptr fit_cloud(new PC);
+  PC::Ptr cloud2(new PC);
 
   BiCamera cam;
-  cam.Init(cloud, fit_cloud);
-  cam.Run(cloud, fit_cloud);
+  cam.Init(cloud, cloud2);
+  cam.Run(cloud, cloud2);
 }
