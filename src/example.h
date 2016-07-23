@@ -39,7 +39,7 @@ public:
   void Run(PC::Ptr cloud, PC::Ptr fit_cloud); // get a frame and process 
   void DepthImageToPc(Mat depth_image, PC::Ptr cloud); // convert depth-image to point clouds
   void RemoveNoise(Mat depth_image); // remove noises from environment
-  void MatchTwoPc(PC::Ptr target, PC::Ptr source, PC output); // using ICP to match two point clouds(registration)
+  void MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   ~BiCamera();
 
 private:

@@ -113,26 +113,27 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
   for (int u = 0; u < height; ++u)
     for (int v = 0; v < width; ++v)
       {
-	int d = img.at<uchar>(u,v);
+	int d = img.at<uchar>(u,v) + 1.0; // avoid zero
 	if(d < 32 * 4)
 	  d_real = d / 4.0;
 	else
 	  d_real = (d * 2 - 128) / 4.0;
 
 	// compute (x, y, z)
+	z = kBMultipyF / d_real;
 	x = (u - kCu) * z / kF;
 	y = (v - kCv) * z / kF;
-	z = kBMultipyF / d_real;
 
 	// show in rviz
-	if (z < 2000)
-	  {
-	    cloud->points[index].x = x / 255.0f; // /255.0f is just for show in rviz
-	    cloud->points[index].y = y / 255.0f;
-	    cloud->points[index].z = z / 255.0f;
+	if (z < 1000)
+	 {
+	    cloud->points[index].x = x / 255.0; // /255.0f is just for show in rviz
+	    cloud->points[index].y = y / 255.0;
+	    cloud->points[index].z = z / 255.0;
 	    index++;
-	  }
+	 }
       }
+  cloud->points.resize(index); // remove no-data points
 }
 
 void BiCamera::RemoveNoise(Mat img)
@@ -142,7 +143,7 @@ void BiCamera::RemoveNoise(Mat img)
 
 }
 
-void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC output) // change source
+void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
 {
   PC::Ptr src(new PC);  
   PC::Ptr tgt(new PC);  
@@ -158,16 +159,16 @@ void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC output) // change s
   
   icp.setInputSource(src);  
   icp.setInputTarget(tgt);  
-  icp.align(output);  
-  // cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << endl;  
+  icp.align(*output);  
+  cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << endl;  
   
-  // output->resize(tgt->size() + output->size());  
-  //  for (int i = 0; i < tgt->size(); i++)  
-  //   {  
-  //    output->push_back(tgt->points[i]); //合并  
-  //   }  
-  // cout << "After registration using ICP:" << output->size() << endl;
-  // cout << icp.getFinalTransformation() << endl;
+  output->resize(tgt->size() + output->size());  
+   for (int i = 0; i < tgt->size(); i++)  
+    {  
+     output->push_back(tgt->points[i]); //合并  
+    }  
+  cout << "After registration using ICP:" << output->size() << endl;
+  cout << icp.getFinalTransformation() << endl;
 }
 
 void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
@@ -200,9 +201,9 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       DepthImageToPc(disp, cloud);
       DepthImageToPc(disp2, cloud2);
 
-      PC output;
-      //MatchTwoPc(cloud, cloud2, output);
-
+      PC::Ptr output(new PC);
+      MatchTwoPc(cloud, cloud2, output);
+      
       // if (flag == true) // this frame should be computed
       //   {
       //     FitPlane(cloud, fit_cloud);
@@ -216,8 +217,8 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       // else if (key == 'c') // close to fit plane
       // 	flag = false;	
       
-      pcl_conversions::toPCL(ros::Time::now(), cloud2->header.stamp);
-      pub.publish(cloud2);
+      pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
+      pub.publish(cloud);
       ros::spinOnce ();
       loop_rate->sleep (); // private
     }
