@@ -17,6 +17,7 @@
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/registration/icp.h>
 // opencv specific includes
 #include <cv_bridge/cv_bridge.h>
 #include "opencv2/opencv.hpp"
@@ -36,7 +37,9 @@ public:
   void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane 
   void Init(PC::Ptr cloud, PC::Ptr fit_cloud); // initialize
   void Run(PC::Ptr cloud, PC::Ptr fit_cloud); // get a frame and process 
-  void DepthImageToPc(cv::Mat disp, PC::Ptr cloud); // convert depth-image to point clouds
+  void DepthImageToPc(Mat depth_image, PC::Ptr cloud); // convert depth-image to point clouds
+  void RemoveNoise(Mat depth_image); // remove noises from environment
+  void MatchTwoPc(PC::Ptr target, PC::Ptr source, PC output); // using ICP to match two point clouds(registration)
   ~BiCamera();
 
 private:

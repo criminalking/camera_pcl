@@ -88,13 +88,14 @@ void BiCamera::Init(PC::Ptr cloud, PC::Ptr cloud2)
   cloud->is_dense = false;
   cloud->points.resize(cloud->width * cloud->height);
 
+  cloud2->header.frame_id = "map";
   cloud2->height = height;
   cloud2->width = width;
   cloud2->is_dense = false;
   cloud2->points.resize(cloud2->width * cloud2->height);
 }
 
-void BiCamera::DepthImageToPc(cv::Mat disp, PC::Ptr cloud) 
+void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud) 
 {
   // camera params
   const double kBMultipyF = 35981.122607;  // kBMultipyF = b*f
@@ -112,7 +113,7 @@ void BiCamera::DepthImageToPc(cv::Mat disp, PC::Ptr cloud)
   for (int u = 0; u < height; ++u)
     for (int v = 0; v < width; ++v)
       {
-	int d = disp.at<uchar>(u,v);
+	int d = img.at<uchar>(u,v);
 	if(d < 32 * 4)
 	  d_real = d / 4.0;
 	else
@@ -132,6 +133,41 @@ void BiCamera::DepthImageToPc(cv::Mat disp, PC::Ptr cloud)
 	    index++;
 	  }
       }
+}
+
+void BiCamera::RemoveNoise(Mat img)
+{
+
+
+
+}
+
+void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC output) // change source
+{
+  PC::Ptr src(new PC);  
+  PC::Ptr tgt(new PC);  
+  
+  tgt = target;  
+  src = source;  
+  
+  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
+  icp.setMaxCorrespondenceDistance(0.1);  
+  icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
+  icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
+  icp.setMaximumIterations(100); // if iteration smaller than threshold, converge 
+  
+  icp.setInputSource(src);  
+  icp.setInputTarget(tgt);  
+  icp.align(output);  
+  // cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << endl;  
+  
+  // output->resize(tgt->size() + output->size());  
+  //  for (int i = 0; i < tgt->size(); i++)  
+  //   {  
+  //    output->push_back(tgt->points[i]); //合并  
+  //   }  
+  // cout << "After registration using ICP:" << output->size() << endl;
+  // cout << icp.getFinalTransformation() << endl;
 }
 
 void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
@@ -157,8 +193,15 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
 	
       //use mid-filter for disp
       //cv::medianBlur(disp, disp, 5);
+
+      RemoveNoise(disp);
+      RemoveNoise(disp2);
 	
       DepthImageToPc(disp, cloud);
+      DepthImageToPc(disp2, cloud2);
+
+      PC output;
+      //MatchTwoPc(cloud, cloud2, output);
 
       // if (flag == true) // this frame should be computed
       //   {
@@ -168,13 +211,13 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       char key = cv::waitKey(100);
       if(key == 'q') // quit
 	break;
-      else if (key == 'o') // start to fit plane
-	flag = true;
-      else if (key == 'c') // close to fit plane
-	flag = false;	
+      // else if (key == 'o') // start to fit plane
+      // 	flag = true;
+      // else if (key == 'c') // close to fit plane
+      // 	flag = false;	
       
-      pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
-      pub.publish(cloud);
+      pcl_conversions::toPCL(ros::Time::now(), cloud2->header.stamp);
+      pub.publish(cloud2);
       ros::spinOnce ();
       loop_rate->sleep (); // private
     }
