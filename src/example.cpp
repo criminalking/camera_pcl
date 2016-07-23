@@ -2,7 +2,6 @@
 
 BiCamera::~BiCamera()
 {
-  delete c;
   delete loop_rate;
 }
 
@@ -79,18 +78,8 @@ void BiCamera::Init(PC::Ptr cloud, PC::Ptr cloud2)
   // ros publish
   pub = nh.advertise<PC> ("points2", 1);
 
-  // set and open camera
-  sel = CAM_STEREO_752X480_LD_30FPS;
-  c = new movesense::MoveSenseCamera(sel);
-  if(!(movesense::MS_SUCCESS == c->OpenCamera()))
-    {
-      std::cout << "Open Camera Failed!" << std::endl;
-      std::exit(1);
-    }
   width  = 752;
   height = 480;
-  len  = width * height * 2;
-  img_data = new unsigned char[len];
 
   // set point clouds
   cloud->header.frame_id = "map";
@@ -152,41 +141,37 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
   
   while (nh.ok())
     { 
-      c->GetImageData(img_data, len);
-      if(len > 0)
-	{
-	  cv::Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
-	  for(int i = 0 ; i < height; i++)
-	    {
-	      memcpy(left.data + width * i, img_data + (2 * i) * width, width);
-	      memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
-	    }
+      left = cv::imread("src/left.jpg", 0);
+      disp = cv::imread("src/disp.jpg", 0);
+      left2 = cv::imread("src/left2.jpg", 0);
+      disp2 = cv::imread("src/disp2.jpg", 0);
       
-	  cv::imshow("left",left);
-	  cv::imshow("disp",disp);
+      cv::imshow("left", left);
+      cv::imshow("disp", disp);
+      cv::imshow("left2", left2);
+      cv::imshow("disp2", disp2);
 
-	  // save the image left and disp
-	  //cv::imwrite( "left.jpg", left );
-	  //cv::imwrite( "disp.jpg", disp );
+      // save the image left and disp
+      //cv::imwrite( "left.jpg", left );
+      //cv::imwrite( "disp.jpg", disp );
 	
-	  //use mid-filter for disp
-	  //cv::medianBlur(disp, disp, 5);
+      //use mid-filter for disp
+      //cv::medianBlur(disp, disp, 5);
 	
-	  DepthImageToPc(disp, cloud);
+      DepthImageToPc(disp, cloud);
 
-	  // if (flag == true) // this frame should be computed
-	  //   {
-	  //     FitPlane(cloud, fit_cloud);
-	  //   }
+      // if (flag == true) // this frame should be computed
+      //   {
+      //     FitPlane(cloud, fit_cloud);
+      //   }
 	  
-	  char key = cv::waitKey(100);
-	  if(key == 'q') // quit
-	    break;
-	  else if (key == 'o') // start to fit plane
-	    flag = true;
-	  else if (key == 'c') // close to fit plane
-	    flag = false;
-	}
+      char key = cv::waitKey(100);
+      if(key == 'q') // quit
+	break;
+      else if (key == 'o') // start to fit plane
+	flag = true;
+      else if (key == 'c') // close to fit plane
+	flag = false;	
       
       pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
       pub.publish(cloud);

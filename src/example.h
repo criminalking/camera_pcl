@@ -27,6 +27,9 @@
 #define K 10
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
+using namespace std;
+using namespace cv;
+
 class BiCamera
 {
 public:
@@ -49,6 +52,7 @@ private:
   int height;
   int len;
   unsigned char *img_data;
+  Mat left, disp, left2, disp2;
 
   // start or finish fitting plane
   bool flag;
