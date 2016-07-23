@@ -125,7 +125,7 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
 	y = (v - kCv) * z / kF;
 
 	// show in rviz
-	if (z < 1000)
+	if (z < 2000)
 	 {
 	    cloud->points[index].x = x / 255.0; // /255.0f is just for show in rviz
 	    cloud->points[index].y = y / 255.0;
@@ -148,8 +148,8 @@ void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // cha
   PC::Ptr src(new PC);  
   PC::Ptr tgt(new PC);  
   
-  tgt = target;  
-  src = source;  
+  tgt = source;  
+  src = target;  
   
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
   icp.setMaxCorrespondenceDistance(0.1);  
@@ -163,10 +163,8 @@ void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // cha
   cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << endl;  
   
   output->resize(tgt->size() + output->size());  
-   for (int i = 0; i < tgt->size(); i++)  
-    {  
-     output->push_back(tgt->points[i]); //合并  
-    }  
+  for (int i = 0; i < tgt->size(); i++)  
+    output->push_back(tgt->points[i]); //合并  
   cout << "After registration using ICP:" << output->size() << endl;
   cout << icp.getFinalTransformation() << endl;
 }
@@ -183,10 +181,10 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       left2 = cv::imread("src/left2.jpg", 0);
       disp2 = cv::imread("src/disp2.jpg", 0);
       
-      cv::imshow("left", left);
-      cv::imshow("disp", disp);
-      cv::imshow("left2", left2);
-      cv::imshow("disp2", disp2);
+      // cv::imshow("left", left);
+      // cv::imshow("disp", disp);
+      // cv::imshow("left2", left2);
+      // cv::imshow("disp2", disp2);
 
       // save the image left and disp
       //cv::imwrite( "left.jpg", left );
@@ -202,6 +200,7 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       DepthImageToPc(disp2, cloud2);
 
       PC::Ptr output(new PC);
+      output->header.frame_id = "map";
       MatchTwoPc(cloud, cloud2, output);
       
       // if (flag == true) // this frame should be computed
@@ -217,8 +216,8 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       // else if (key == 'c') // close to fit plane
       // 	flag = false;	
       
-      pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
-      pub.publish(cloud);
+      pcl_conversions::toPCL(ros::Time::now(), output->header.stamp);
+      pub.publish(output);
       ros::spinOnce ();
       loop_rate->sleep (); // private
     }
