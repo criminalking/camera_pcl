@@ -73,26 +73,41 @@ void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) // need K
     }
 }
 
-void BiCamera::Init(PC::Ptr cloud, PC::Ptr cloud2)
+void BiCamera::Init()
 {
   // ros publish
   pub = nh.advertise<PC> ("points2", 1);
 
+  // camera frame configuration
   width  = 752;
   height = 480;
+}
 
+void BiCamera::ProcessTemplate(PC::Ptr temp_cloud)
+{
   // set point clouds
-  cloud->header.frame_id = "map";
-  cloud->height = height;
-  cloud->width = width;
-  cloud->is_dense = false;
-  cloud->points.resize(cloud->width * cloud->height);
+  temp_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz  
+  temp_cloud->height = height;
+  temp_cloud->width = width;
+  temp_cloud->is_dense = false;
+  temp_cloud->points.resize(temp_cloud->width * temp_cloud->height);
 
-  cloud2->header.frame_id = "map";
-  cloud2->height = height;
-  cloud2->width = width;
-  cloud2->is_dense = false;
-  cloud2->points.resize(cloud2->width * cloud2->height);
+  for (int i = 0; i < TEMPNUM; i++)
+    {
+
+    }
+
+}
+
+void BiCamera::ProcessTest(PC::Ptr test_cloud)
+{
+  test_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
+  test_cloud->height = height;
+  test_cloud->width = width;
+  test_cloud->is_dense = false;
+  test_cloud->points.resize(test_cloud->width * test_cloud->height);
+
+
 }
 
 void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud) 
@@ -124,12 +139,12 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
 	x = (u - kCu) * z / kF;
 	y = (v - kCv) * z / kF;
 
-	// show in rviz
+	// storage data to cloud
 	if (z < 2000)
 	 {
-	    cloud->points[index].x = x / 255.0; // /255.0f is just for show in rviz
-	    cloud->points[index].y = y / 255.0;
-	    cloud->points[index].z = z / 255.0;
+	    cloud->points[index].x = x; // 255.0f is just for show in rviz
+	    cloud->points[index].y = y;
+	    cloud->points[index].z = z;
 	    index++;
 	 }
       }
@@ -138,9 +153,18 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
 
 void BiCamera::RemoveNoise(Mat img)
 {
+  // remove ground or wall
+  // method 1: only select area in the middle
 
 
+}
 
+void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud)
+{
+  pcl::VoxelGrid<pcl::PointXYZ> sor;
+  sor.setInputCloud(cloud);
+  sor.setLeafSize(0.01f, 0.01f, 0.01f);
+  sor.filter(*filter_cloud);
 }
 
 void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
@@ -148,11 +172,11 @@ void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // cha
   PC::Ptr src(new PC);  
   PC::Ptr tgt(new PC);  
   
-  tgt = source;  
-  src = target;  
+  tgt = target;  
+  src = source;  
   
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
-  icp.setMaxCorrespondenceDistance(0.1);  
+  icp.setMaxCorrespondenceDistance(0.1); // this param is very important!!!  
   icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
   icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
   icp.setMaximumIterations(100); // if iteration smaller than threshold, converge 
@@ -166,11 +190,14 @@ void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // cha
   for (int i = 0; i < tgt->size(); i++)  
     output->push_back(tgt->points[i]); //合并  
   cout << "After registration using ICP:" << output->size() << endl;
-  cout << icp.getFinalTransformation() << endl;
+  cout << icp.getFinalTransformation() << endl; 
 }
 
-void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
+void BiCamera::Run(PC::Ptr temp_cloud, PC::Ptr test_cloud)
 {
+  ProcessTemplate(temp_cloud); // initialize template
+  ProcessTest(test_cloud); // estimate test poses
+  
   loop_rate = new ros::Rate(4);
   flag = false;
   
@@ -196,12 +223,12 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
       RemoveNoise(disp);
       RemoveNoise(disp2);
 	
-      DepthImageToPc(disp, cloud);
-      DepthImageToPc(disp2, cloud2);
+      DepthImageToPc(disp, temp_cloud);
+      DepthImageToPc(disp2, test_cloud);
 
       PC::Ptr output(new PC);
       output->header.frame_id = "map";
-      MatchTwoPc(cloud, cloud2, output);
+      MatchTwoPc(temp_cloud, test_cloud, output);
       
       // if (flag == true) // this frame should be computed
       //   {
@@ -227,10 +254,10 @@ void BiCamera::Run(PC::Ptr cloud, PC::Ptr cloud2)
 int main (int argc, char** argv)
 {
   ros::init (argc, argv, "pub_pcl");
-  PC::Ptr cloud(new PC);
-  PC::Ptr cloud2(new PC);
+  PC::Ptr temp_cloud(new PC);
+  PC::Ptr test_cloud(new PC);
 
   BiCamera cam;
-  cam.Init(cloud, cloud2);
-  cam.Run(cloud, cloud2);
+  cam.Init();
+  cam.Run(temp_cloud, test_cloud);
 }
