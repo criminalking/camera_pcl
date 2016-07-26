@@ -83,31 +83,65 @@ void BiCamera::Init()
   height = 480;
 }
 
-void BiCamera::ProcessTemplate(PC::Ptr temp_cloud)
+void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
 {
-  // set point clouds
-  temp_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz  
-  temp_cloud->height = height;
-  temp_cloud->width = width;
-  temp_cloud->is_dense = false;
-  temp_cloud->points.resize(temp_cloud->width * temp_cloud->height);
+  temp_cloud_ptr = new PC::Ptr[TEMPNUM];
 
+  char left_name[60];
+  char disp_name[60];
   for (int i = 0; i < TEMPNUM; i++)
     {
+      // create temperary point clouds storaging data
+      PC::Ptr temp_cloud(new PC);
+      temp_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz  
+      temp_cloud->height = height;
+      temp_cloud->width = width;
+      temp_cloud->is_dense = false;
+      temp_cloud->points.resize(temp_cloud->width * temp_cloud->height);
 
+      // read image
+      sprintf(left_name, "img/template/left_%d.jpg", i + 1);
+      sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
+      left = cv::imread(left_name, 0);
+      disp = cv::imread(disp_name, 0);
+      
+      DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
+      RemoveNoise(temp_cloud); // remove ground, celling, obstacles
+      FilterPc(temp_cloud, temp_cloud_ptr[i]); // filter point clouds
     }
-
 }
 
-void BiCamera::ProcessTest(PC::Ptr test_cloud)
+void BiCamera::ProcessTest(Mat disp) 
 {
+  PC::Ptr test_cloud(new PC);
   test_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
   test_cloud->height = height;
   test_cloud->width = width;
   test_cloud->is_dense = false;
   test_cloud->points.resize(test_cloud->width * test_cloud->height);
 
+  DepthImageToPc(disp, test_cloud); // depth image convert to point clouds
+  RemoveNoise(test_cloud); // remove ground, celling, obstacles
 
+  PC::Ptr cloud(new PC);
+  FilterPc(test_cloud, cloud); // filter point clouds
+
+  // match two point clouds using ICP
+  PC::Ptr output(new PC);
+  output->header.frame_id = "map";
+  float score = 0.0, max = 0.0;
+  int max_index = 0;
+  for (int i = 0; i < TEMPNUM; i++)
+    {
+      // FIXME: don't know max or min, now max
+      score = MatchTwoPc(temp_cloud_ptr[i], cloud, output);
+      if (score > max)
+	{
+	  max = score;
+	  max_index = i;
+	}
+    }
+  cout << "This image is similiar to disp_" << max_index + 1 << endl;
 }
 
 void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud) 
@@ -151,7 +185,7 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
   cloud->points.resize(index); // remove no-data points
 }
 
-void BiCamera::RemoveNoise(Mat img)
+void BiCamera::RemoveNoise(PC::Ptr cloud)
 {
   // remove ground or wall
   // method 1: only select area in the middle
@@ -161,13 +195,14 @@ void BiCamera::RemoveNoise(Mat img)
 
 void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud)
 {
-  pcl::VoxelGrid<pcl::PointXYZ> sor;
-  sor.setInputCloud(cloud);
-  sor.setLeafSize(0.01f, 0.01f, 0.01f);
-  sor.filter(*filter_cloud);
+  // pcl::VoxelGrid<pcl::PointXYZ> sor;
+  // sor.setInputCloud(cloud);
+  // sor.setLeafSize(0.01f, 0.01f, 0.01f);
+  // sor.filter(*filter_cloud);
+  filter_cloud = cloud;
 }
 
-void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
+float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
 {
   PC::Ptr src(new PC);  
   PC::Ptr tgt(new PC);  
@@ -190,74 +225,57 @@ void BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // cha
   for (int i = 0; i < tgt->size(); i++)  
     output->push_back(tgt->points[i]); //合并  
   cout << "After registration using ICP:" << output->size() << endl;
-  cout << icp.getFinalTransformation() << endl; 
+  cout << icp.getFinalTransformation() << endl;
+  return icp.getFitnessScore();
 }
 
-void BiCamera::Run(PC::Ptr temp_cloud, PC::Ptr test_cloud)
+void BiCamera::Run()
 {
-  ProcessTemplate(temp_cloud); // initialize template
-  ProcessTest(test_cloud); // estimate test poses
+  // create filter_point which points to all template pointclouds
+  ProcessTemplate(); // preprocess template
   
-  loop_rate = new ros::Rate(4);
-  flag = false;
+  // loop_rate = new ros::Rate(4);
+  // flag = false;
   
-  while (nh.ok())
-    { 
-      left = cv::imread("src/left.jpg", 0);
-      disp = cv::imread("src/disp.jpg", 0);
-      left2 = cv::imread("src/left2.jpg", 0);
-      disp2 = cv::imread("src/disp2.jpg", 0);
-      
-      // cv::imshow("left", left);
-      // cv::imshow("disp", disp);
-      // cv::imshow("left2", left2);
-      // cv::imshow("disp2", disp2);
+  // while (nh.ok())
+  //   { 	
+  //     //use mid-filter for disp
+  //     //cv::medianBlur(disp, disp, 5);
 
-      // save the image left and disp
-      //cv::imwrite( "left.jpg", left );
-      //cv::imwrite( "disp.jpg", disp );
-	
-      //use mid-filter for disp
-      //cv::medianBlur(disp, disp, 5);
-
-      RemoveNoise(disp);
-      RemoveNoise(disp2);
-	
-      DepthImageToPc(disp, temp_cloud);
-      DepthImageToPc(disp2, test_cloud);
-
-      PC::Ptr output(new PC);
-      output->header.frame_id = "map";
-      MatchTwoPc(temp_cloud, test_cloud, output);
-      
-      // if (flag == true) // this frame should be computed
-      //   {
-      //     FitPlane(cloud, fit_cloud);
-      //   }
+  //     char left_name[60];
+  //     char disp_name[60];
+  //     int i = 7;
+  //     sprintf(left_name, "img/test/left_%d.jpg", i);
+  //     sprintf(disp_name, "img/test/disp_%d.jpg", i);
+  //     left = cv::imread(left_name, 0);
+  //     disp = cv::imread(disp_name, 0);
+  //     ProcessTest(filter_point, disp); // estimate test poses
+  //     // if (flag == true) // this frame should be computed
+  //     //   {
+  //     //     FitPlane(cloud, fit_cloud);
+  //     //   }
 	  
-      char key = cv::waitKey(100);
-      if(key == 'q') // quit
-	break;
-      // else if (key == 'o') // start to fit plane
-      // 	flag = true;
-      // else if (key == 'c') // close to fit plane
-      // 	flag = false;	
+  //     char key = cv::waitKey(100);
+  //     if(key == 'q') // quit
+  // 	break;
+  //     // else if (key == 'o') // start to fit plane
+  //     // 	flag = true;
+  //     // else if (key == 'c') // close to fit plane
+  //     // 	flag = false;	
       
-      pcl_conversions::toPCL(ros::Time::now(), output->header.stamp);
-      pub.publish(output);
-      ros::spinOnce ();
-      loop_rate->sleep (); // private
-    }
+  //     pcl_conversions::toPCL(ros::Time::now(), output->header.stamp);
+  //     pub.publish(output);
+  //     ros::spinOnce ();
+  //     loop_rate->sleep (); // private
+  //   }
 }
 
 
 int main (int argc, char** argv)
 {
   ros::init (argc, argv, "pub_pcl");
-  PC::Ptr temp_cloud(new PC);
-  PC::Ptr test_cloud(new PC);
-
+ 
   BiCamera cam;
   cam.Init();
-  cam.Run(temp_cloud, test_cloud);
+  cam.Run();
 }

@@ -26,7 +26,7 @@
 #include "opencv2/highgui/highgui.hpp"
 
 #define K 10
-#define TEMPNUM 10 // define number of templates 
+#define TEMPNUM 6 // define number of templates
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
@@ -35,15 +35,15 @@ using namespace cv;
 class BiCamera
 {
 public:
-  void ProcessTemplate(PC::Ptr temp_cloud);
-  void ProcessTest(PC::Ptr test_cloud);
+  void ProcessTemplate(); // preprocess all template images
+  void ProcessTest(Mat disp); // only process one test image
   void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane 
   void Init(); // initialize
-  void Run(PC::Ptr cloud, PC::Ptr fit_cloud); // get a frame and process 
+  void Run(); // get a frame and process 
   void DepthImageToPc(Mat depth_image, PC::Ptr cloud); // convert depth-image to point clouds
-  void RemoveNoise(Mat depth_image); // remove noises from environment
+  void RemoveNoise(PC::Ptr cloud); // remove noises from environment
   void FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud); // filter point clouds
-  void MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
+  float MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   ~BiCamera();
 
 private:
@@ -60,6 +60,8 @@ private:
   int len;
   unsigned char *img_data;
   Mat left, disp, left2, disp2;
+
+  PC::Ptr* temp_cloud_ptr;
 
   // start or finish fitting plane
   bool flag;
