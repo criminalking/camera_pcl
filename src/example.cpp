@@ -85,14 +85,13 @@ void BiCamera::Init()
 
 void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
 {
-  temp_cloud_ptr = new PC::Ptr[TEMPNUM];
-
   char left_name[60];
   char disp_name[60];
   for (int i = 0; i < TEMPNUM; i++)
     {
       // create temperary point clouds storaging data
       PC::Ptr temp_cloud(new PC);
+
       temp_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz  
       temp_cloud->height = height;
       temp_cloud->width = width;
@@ -107,7 +106,10 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       
       DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
       RemoveNoise(temp_cloud); // remove ground, celling, obstacles
-      FilterPc(temp_cloud, temp_cloud_ptr[i]); // filter point clouds
+
+      PC::Ptr filter_cloud(new PC);
+      // FilterPc(temp_cloud, filter_cloud); // filter point clouds
+      temp_cloud_ptr.push_back(temp_cloud);
     }
 }
 
@@ -189,17 +191,25 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
 {
   // remove ground or wall
   // method 1: only select area in the middle
-
-
+  for (size_t i = 0; i < cloud->points.size (); ++i)
+    {
+      //   std::cerr << "    " << cloud->points[i].x << " " 
+      //	<< cloud->points[i].y << " " 
+      //		<< cloud->points[i].z << std::endl;
+    }
 }
 
 void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud)
 {
-  // pcl::VoxelGrid<pcl::PointXYZ> sor;
-  // sor.setInputCloud(cloud);
+   filter_cloud = cloud;
+  // pcl::PCLPointCloud2::Ptr cloud_filtered_blob(new pcl::PCLPointCloud2), cloud_blob(new pcl::PCLPointCloud2);
+  // pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+  // pcl::toPCLPointCloud2(*cloud, *cloud_blob); // convert PC::Ptr to pcl::PCLPointCloud2
+  // sor.setInputCloud(cloud_blob);
   // sor.setLeafSize(0.01f, 0.01f, 0.01f);
-  // sor.filter(*filter_cloud);
-  filter_cloud = cloud;
+  // sor.filter(*cloud_filtered_blob);
+  // pcl::fromPCLPointCloud2(*cloud_filtered_blob, *filter_cloud); // convert pcl::PCLPointCloud2 to PC::Ptr
+  // cout << cloud->width * cloud->height << "   " << filter_cloud->width * filter_cloud->height << endl;
 }
 
 float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
@@ -232,13 +242,13 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ch
 void BiCamera::Run()
 {
   // create filter_point which points to all template pointclouds
-  ProcessTemplate(); // preprocess template
+  //ProcessTemplate(); // preprocess template
   
-  // loop_rate = new ros::Rate(4);
-  // flag = false;
+     loop_rate = new ros::Rate(4);
+     flag = false;
   
-  // while (nh.ok())
-  //   { 	
+     while (nh.ok())
+       { 	
   //     //use mid-filter for disp
   //     //cv::medianBlur(disp, disp, 5);
 
@@ -254,20 +264,21 @@ void BiCamera::Run()
   //     //   {
   //     //     FitPlane(cloud, fit_cloud);
   //     //   }
-	  
-  //     char key = cv::waitKey(100);
-  //     if(key == 'q') // quit
-  // 	break;
+	 ProcessTemplate();
+         char key = cv::waitKey(100);
+         if(key == 'q') // quit
+	   break;
   //     // else if (key == 'o') // start to fit plane
   //     // 	flag = true;
   //     // else if (key == 'c') // close to fit plane
   //     // 	flag = false;	
-      
-  //     pcl_conversions::toPCL(ros::Time::now(), output->header.stamp);
-  //     pub.publish(output);
-  //     ros::spinOnce ();
-  //     loop_rate->sleep (); // private
-  //   }
+
+	 
+	 //	 pcl_conversions::toPCL(ros::Time::now(), temp_cloud_ptr[0]->header.stamp);
+	 //	 pub.publish(temp_cloud_ptr[0]);
+         ros::spinOnce ();
+         loop_rate->sleep (); // private
+       }
 }
 
 

@@ -26,7 +26,7 @@
 #include "opencv2/highgui/highgui.hpp"
 
 #define K 10
-#define TEMPNUM 6 // define number of templates
+#define TEMPNUM 1 // define number of templates
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
@@ -61,7 +61,7 @@ private:
   unsigned char *img_data;
   Mat left, disp, left2, disp2;
 
-  PC::Ptr* temp_cloud_ptr;
+  vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr;
 
   // start or finish fitting plane
   bool flag;
