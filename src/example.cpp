@@ -59,15 +59,15 @@ void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) // need K
 	      
   if (abs(ave - distance) <= 2 && pc > 0.9999) // insure answer is acceptable
     {
-      std::cout << pa << " " << pb << " " << pc << " " << pd << std::endl;
-      std::cout << "error = " << error << " mm  ";
-      std::cout << "ave = " << ave << " mm  ";
+      cout << pa << " " << pb << " " << pc << " " << pd << std::endl;
+      cout << "error = " << error << " mm  ";
+      cout << "ave = " << ave << " mm  ";
       // show z-axis distance
-      std::cout << "distance = " << distance << " mm" << std::endl;
+      cout << "distance = " << distance << " mm" << std::endl;
 
       // // write in .txt
-      // std::ofstream out;
-      // out.open("out.txt", std::ios::app);
+      // ofstream out;
+      // out.open("out.txt", ios::app);
       // out << error << " " << (ave + distance) / 2 << "\n";
       // out.close();
     }
@@ -101,10 +101,12 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       // read image
       sprintf(left_name, "img/template/left_%d.jpg", i + 1);
       sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
-      left = cv::imread(left_name, 0);
-      disp = cv::imread(disp_name, 0);
+      left = imread(left_name, 0);
+      disp = imread(disp_name, 0);
       
       DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
+      //imshow("aa", disp);
+      
       RemoveNoise(temp_cloud); // remove ground, celling, obstacles
 
       PC::Ptr filter_cloud(new PC);
@@ -126,24 +128,23 @@ void BiCamera::ProcessTest(Mat disp)
   RemoveNoise(test_cloud); // remove ground, celling, obstacles
 
   PC::Ptr cloud(new PC);
-  FilterPc(test_cloud, cloud); // filter point clouds
+  //FilterPc(test_cloud, cloud); // filter point clouds
 
   // match two point clouds using ICP
   PC::Ptr output(new PC);
   output->header.frame_id = "map";
-  float score = 0.0, max = 0.0;
-  int max_index = 0;
+  float score = 0.0, min = 1000000.0;
+  int min_index = 0;
   for (int i = 0; i < TEMPNUM; i++)
     {
-      // FIXME: don't know max or min, now max
-      score = MatchTwoPc(temp_cloud_ptr[i], cloud, output);
-      if (score > max)
+      score = MatchTwoPc(temp_cloud_ptr[i], test_cloud, output);
+      if (score <= min)
 	{
-	  max = score;
-	  max_index = i;
+	  min = score;
+	  min_index = i;
 	}
     }
-  cout << "This image is similiar to disp_" << max_index + 1 << endl;
+  cout << "This image is similiar to disp_" << min_index + 1 << "  score: " << min << endl;
 }
 
 void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud) 
@@ -193,9 +194,9 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
   // method 1: only select area in the middle
   for (size_t i = 0; i < cloud->points.size (); ++i)
     {
-      //   std::cerr << "    " << cloud->points[i].x << " " 
+      //   cerr << "    " << cloud->points[i].x << " " 
       //	<< cloud->points[i].y << " " 
-      //		<< cloud->points[i].z << std::endl;
+      //		<< cloud->points[i].z << endl;
     }
 }
 
@@ -242,43 +243,45 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ch
 void BiCamera::Run()
 {
   // create filter_point which points to all template pointclouds
-  //ProcessTemplate(); // preprocess template
+  ProcessTemplate(); // preprocess template
   
-     loop_rate = new ros::Rate(4);
-     flag = false;
-  
-     while (nh.ok())
-       { 	
-  //     //use mid-filter for disp
-  //     //cv::medianBlur(disp, disp, 5);
+  loop_rate = new ros::Rate(4);
+  flag = false;
 
-  //     char left_name[60];
-  //     char disp_name[60];
-  //     int i = 7;
-  //     sprintf(left_name, "img/test/left_%d.jpg", i);
-  //     sprintf(disp_name, "img/test/disp_%d.jpg", i);
-  //     left = cv::imread(left_name, 0);
-  //     disp = cv::imread(disp_name, 0);
-  //     ProcessTest(filter_point, disp); // estimate test poses
-  //     // if (flag == true) // this frame should be computed
-  //     //   {
-  //     //     FitPlane(cloud, fit_cloud);
-  //     //   }
-	 ProcessTemplate();
-         char key = cv::waitKey(100);
-         if(key == 'q') // quit
-	   break;
-  //     // else if (key == 'o') // start to fit plane
-  //     // 	flag = true;
-  //     // else if (key == 'c') // close to fit plane
-  //     // 	flag = false;	
+  PC::Ptr cloud(new PC);
+  cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
+  cloud->height = height;
+  cloud->width = width;
+  cloud->is_dense = false;
+  cloud->points.resize(cloud->width * cloud->height);
 
-	 
-	 //	 pcl_conversions::toPCL(ros::Time::now(), temp_cloud_ptr[0]->header.stamp);
-	 //	 pub.publish(temp_cloud_ptr[0]);
-         ros::spinOnce ();
-         loop_rate->sleep (); // private
-       }
+  while (nh.ok())
+    { 	
+      //use mid-filter for disp
+      //medianBlur(disp, disp, 5);
+
+      char left_name[60];
+      char disp_name[60];
+      int i = 3;
+      sprintf(left_name, "img/test/left_%d.jpg", i);
+      sprintf(disp_name, "img/test/disp_%d.jpg", i);
+      left = imread(left_name, 0);
+      disp = imread(disp_name, 0);
+      ProcessTest(disp); // estimate test poses
+      // if (flag == true) // this frame should be computed
+      //   {
+      //     FitPlane(cloud, fit_cloud);
+      //   }
+
+      char key = waitKey(100);
+      if(key == 'q') // quit
+	break;
+    
+      // pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
+      //pub.publish(cloud);
+      ros::spinOnce ();
+      loop_rate->sleep (); // private
+    }
 }
 
 

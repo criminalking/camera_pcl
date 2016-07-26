@@ -26,7 +26,7 @@
 #include "opencv2/highgui/highgui.hpp"
 
 #define K 10
-#define TEMPNUM 1 // define number of templates
+#define TEMPNUM 6 // define number of templates
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
