@@ -16,6 +16,9 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 #set the default path for built libraries to the "lib" directory
 set(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 
+SET(CMAKE_C_FLAGS "-std=gnu99 -pedantic -fPIC -pedantic -fopenmp -mtune=corei7-avx")
+SET(CMAKE_CXX_FLAGS "-std=c++0x -Wall -fPIC -pedantic -fopenmp -mtune=corei7-avx")
+
 #for PCL
 find_package(PCL 1.8.0 REQUIRED)
 include_directories(${PCL_INCLUDE_DIRS})
@@ -40,8 +43,10 @@ target_link_libraries( Camera VL4IF)
 add_library(MoveSenseCamera src/MoveSenseCamera.cpp)
 target_link_libraries( MoveSenseCamera Camera)
 
+add_library(dbscan src/dbscan.cpp)
+
 rosbuild_add_executable(example src/example.cpp)
-target_link_libraries(  example  VL4IF CameraCtrl Camera MoveSenseCamera  ${OpenCV_LIBS} )
+target_link_libraries(  example  VL4IF CameraCtrl Camera MoveSenseCamera dbscan  ${OpenCV_LIBS} )
 INCLUDE_DIRECTORIES(  ${OPENCV_INCLUDE_DIR} )
 
 #for boost

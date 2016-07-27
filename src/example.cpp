@@ -103,6 +103,14 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
+
+      if (i == 4)
+	{
+	  
+	  Mat src1 = disp.clone();
+	  Canny(disp,src1, 150, 100,3 );  
+	  imshow("          Canny        ",src1);
+	}
       
       DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
       //imshow("aa", disp);
@@ -177,11 +185,12 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
 	y = (v - kCv) * z / kF;
 
 	// storage data to cloud
-	if (z < 2000)
+	if (z > 1000 && z < 2000)
+	  // && y / 255.0 > (-6) && y / 255.0 < 3)
 	 {
-	    cloud->points[index].x = x; // 255.0f is just for show in rviz
-	    cloud->points[index].y = y;
-	    cloud->points[index].z = z;
+	    cloud->points[index].x = x / 20.0 ; // 255.0f is just for show in rviz
+	    cloud->points[index].y = y / 20.0 ;
+	    cloud->points[index].z = z / 20.0 ;
 	    index++;
 	 }
       }
@@ -191,12 +200,10 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
 void BiCamera::RemoveNoise(PC::Ptr cloud)
 {
   // remove ground or wall
-  // method 1: only select area in the middle
+  // search for connected domain
   for (size_t i = 0; i < cloud->points.size (); ++i)
     {
-      //   cerr << "    " << cloud->points[i].x << " " 
-      //	<< cloud->points[i].y << " " 
-      //		<< cloud->points[i].z << endl;
+      
     }
 }
 
@@ -235,7 +242,7 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ch
   output->resize(tgt->size() + output->size());  
   for (int i = 0; i < tgt->size(); i++)  
     output->push_back(tgt->points[i]); //合并  
-  cout << "After registration using ICP:" << output->size() << endl;
+  //cout << "After registration using ICP:" << output->size() << endl;
   cout << icp.getFinalTransformation() << endl;
   return icp.getFitnessScore();
 }
@@ -247,13 +254,15 @@ void BiCamera::Run()
   
   loop_rate = new ros::Rate(4);
   flag = false;
-
-  PC::Ptr cloud(new PC);
-  cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
-  cloud->height = height;
-  cloud->width = width;
-  cloud->is_dense = false;
-  cloud->points.resize(cloud->width * cloud->height);
+  
+  int q = 4;
+  q--;
+  pcl::PointCloud<pcl::PointXYZ>::Ptr msg (new pcl::PointCloud<pcl::PointXYZ>);
+  msg->header.frame_id = "map";
+  msg->height = height;
+  msg->width = width;
+  msg->is_dense = false;
+  msg->points.resize(msg->width * msg->height);  
 
   while (nh.ok())
     { 	
@@ -262,23 +271,30 @@ void BiCamera::Run()
 
       char left_name[60];
       char disp_name[60];
-      int i = 3;
+      int i = 9;
       sprintf(left_name, "img/test/left_%d.jpg", i);
       sprintf(disp_name, "img/test/disp_%d.jpg", i);
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
+      
       ProcessTest(disp); // estimate test poses
-      // if (flag == true) // this frame should be computed
-      //   {
-      //     FitPlane(cloud, fit_cloud);
-      //   }
+
+      for (size_t i = 0; i < msg->points.size (); ++i)
+	{
+	  msg->points[i].x = temp_cloud_ptr[q]->points[i].x / 255.0 * 20;
+	  msg->points[i].y = temp_cloud_ptr[q]->points[i].y / 255.0 * 20;
+	  msg->points[i].z = temp_cloud_ptr[q]->points[i].z / 255.0 * 20;
+	}
 
       char key = waitKey(100);
       if(key == 'q') // quit
 	break;
-    
-      // pcl_conversions::toPCL(ros::Time::now(), cloud->header.stamp);
-      //pub.publish(cloud);
+
+      //pcl_conversions::toPCL(ros::Time::now(), temp_cloud_ptr[0]->header.stamp);
+      //pub.publish(temp_cloud_ptr[0]);
+      
+      pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
+      pub.publish (msg);      
       ros::spinOnce ();
       loop_rate->sleep (); // private
     }
@@ -287,9 +303,14 @@ void BiCamera::Run()
 
 int main (int argc, char** argv)
 {
-  ros::init (argc, argv, "pub_pcl");
- 
-  BiCamera cam;
-  cam.Init();
-  cam.Run();
+  // ros::init (argc, argv, "pub_pcl");
+  
+  // BiCamera cam;
+  // cam.Init();
+  // cam.Run();
+
+  DBSCAN::ClusterData cl_d = DBSCAN::gen_cluster_data( 3, 100 );
+  DBSCAN dbs(0.1, 5, 1); // threshold 0.1, minPt 5, thread 1
+  dbs.fit( cl_d );
+  cout << dbs << endl;
 }

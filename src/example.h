@@ -24,6 +24,8 @@
 #include "opencv2/imgcodecs/imgcodecs.hpp"
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
+// use DBSCAN
+#include "dbscan.h"
 
 #define K 10
 #define TEMPNUM 6 // define number of templates
@@ -31,6 +33,7 @@ typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
 using namespace cv;
+using namespace clustering;
 
 class BiCamera
 {
@@ -51,6 +54,9 @@ private:
   ros::NodeHandle nh;
   ros::Publisher pub;
   ros::Rate *loop_rate;
+
+  // for DBSCAN
+
 
   // for camera
   movesense::CameraMode sel;
