@@ -103,27 +103,19 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
-
-      if (i == 4)
-	{
-	  
-	  Mat src1 = disp.clone();
-	  Canny(disp,src1, 150, 100,3 );  
-	  imshow("          Canny        ",src1);
-	}
       
       DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
       //imshow("aa", disp);
       
-      RemoveNoise(temp_cloud); // remove ground, celling, obstacles
+      // RemoveNoise(temp_cloud); // remove ground, celling, obstacles
 
       PC::Ptr filter_cloud(new PC);
-      // FilterPc(temp_cloud, filter_cloud); // filter point clouds
+      FilterPc(temp_cloud, filter_cloud); // filter point clouds
       temp_cloud_ptr.push_back(temp_cloud);
     }
 }
 
-void BiCamera::ProcessTest(Mat disp) 
+void BiCamera::ProcessTest(Mat& disp) 
 {
   PC::Ptr test_cloud(new PC);
   test_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
@@ -133,10 +125,15 @@ void BiCamera::ProcessTest(Mat disp)
   test_cloud->points.resize(test_cloud->width * test_cloud->height);
 
   DepthImageToPc(disp, test_cloud); // depth image convert to point clouds
-  RemoveNoise(test_cloud); // remove ground, celling, obstacles
+  // RemoveNoise(test_cloud); // remove ground, celling, obstacles
 
   PC::Ptr cloud(new PC);
-  //FilterPc(test_cloud, cloud); // filter point clouds
+  cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
+  cloud->height = height;
+  cloud->width = width;
+  cloud->is_dense = false;
+  cloud->points.resize(cloud->width * cloud->height);
+  FilterPc(test_cloud, cloud); // filter point clouds
 
   // match two point clouds using ICP
   PC::Ptr output(new PC);
@@ -152,10 +149,11 @@ void BiCamera::ProcessTest(Mat disp)
 	  min_index = i;
 	}
     }
-  cout << "This image is similiar to disp_" << min_index + 1 << "  score: " << min << endl;
+  ROS_WARN("This image is similiar to disp_%d  score: %d\n", min_index + 1, min);
+  //cout << "This image is similiar to disp_" << min_index + 1 << "  score: " << min << endl;
 }
 
-void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud) 
+void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud) 
 {
   // camera params
   const double kBMultipyF = 35981.122607;  // kBMultipyF = b*f
@@ -188,9 +186,9 @@ void BiCamera::DepthImageToPc(Mat img, PC::Ptr cloud)
 	if (z > 1000 && z < 2000)
 	  // && y / 255.0 > (-6) && y / 255.0 < 3)
 	 {
-	    cloud->points[index].x = x / 20.0 ; // 255.0f is just for show in rviz
-	    cloud->points[index].y = y / 20.0 ;
-	    cloud->points[index].z = z / 20.0 ;
+	    cloud->points[index].x = x; // 255.0f is just for show in rviz
+	    cloud->points[index].y = y;
+	    cloud->points[index].z = z;
 	    index++;
 	 }
       }
@@ -209,15 +207,25 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
 
 void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud)
 {
-   filter_cloud = cloud;
-  // pcl::PCLPointCloud2::Ptr cloud_filtered_blob(new pcl::PCLPointCloud2), cloud_blob(new pcl::PCLPointCloud2);
-  // pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-  // pcl::toPCLPointCloud2(*cloud, *cloud_blob); // convert PC::Ptr to pcl::PCLPointCloud2
-  // sor.setInputCloud(cloud_blob);
-  // sor.setLeafSize(0.01f, 0.01f, 0.01f);
-  // sor.filter(*cloud_filtered_blob);
-  // pcl::fromPCLPointCloud2(*cloud_filtered_blob, *filter_cloud); // convert pcl::PCLPointCloud2 to PC::Ptr
-  // cout << cloud->width * cloud->height << "   " << filter_cloud->width * filter_cloud->height << endl;
+  // filter_cloud = cloud;
+  
+  pcl::PCLPointCloud2::Ptr cloud_filtered_blob(new pcl::PCLPointCloud2), cloud_blob(new pcl::PCLPointCloud2);
+  pcl::toPCLPointCloud2(*cloud, *cloud_blob); // convert PC::Ptr to pcl::PCLPointCloud2
+
+  pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+  sor.setInputCloud(cloud_blob);
+  sor.setLeafSize(15, 15, 15);
+  sor.filter(*cloud_filtered_blob);
+
+  // pcl::PassThrough pass;
+  // pass.setInputCloud(cloud_blob);
+  // pass.setFilterFieldName("z");
+  // pass.setFilterLimits(0.0, 1.0);
+  // //pass.setFilterLimitsNegative (true);
+  // pass.filter(*cloud_filtered_blob);//滤波后的数据存储在cloud_filtered中
+  
+  pcl::fromPCLPointCloud2(*cloud_filtered_blob, *filter_cloud); // convert pcl::PCLPointCloud2 to PC::Ptr
+  cout << cloud->points.size() << "   " << filter_cloud->points.size() << endl;
 }
 
 float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
@@ -255,7 +263,7 @@ void BiCamera::Run()
   loop_rate = new ros::Rate(4);
   flag = false;
   
-  int q = 4;
+  int q = 3;
   q--;
   pcl::PointCloud<pcl::PointXYZ>::Ptr msg (new pcl::PointCloud<pcl::PointXYZ>);
   msg->header.frame_id = "map";
@@ -280,15 +288,15 @@ void BiCamera::Run()
       ProcessTest(disp); // estimate test poses
 
       for (size_t i = 0; i < msg->points.size (); ++i)
-	{
-	  msg->points[i].x = temp_cloud_ptr[q]->points[i].x / 255.0 * 20;
-	  msg->points[i].y = temp_cloud_ptr[q]->points[i].y / 255.0 * 20;
-	  msg->points[i].z = temp_cloud_ptr[q]->points[i].z / 255.0 * 20;
-	}
+  	{
+  	  msg->points[i].x = temp_cloud_ptr[q]->points[i].x / 255.0;
+  	  msg->points[i].y = temp_cloud_ptr[q]->points[i].y / 255.0;
+  	  msg->points[i].z = temp_cloud_ptr[q]->points[i].z / 255.0;
+  	}
 
       char key = waitKey(100);
       if(key == 'q') // quit
-	break;
+  	break;
 
       //pcl_conversions::toPCL(ros::Time::now(), temp_cloud_ptr[0]->header.stamp);
       //pub.publish(temp_cloud_ptr[0]);
@@ -303,14 +311,14 @@ void BiCamera::Run()
 
 int main (int argc, char** argv)
 {
-  // ros::init (argc, argv, "pub_pcl");
+  ros::init (argc, argv, "pub_pcl");
   
-  // BiCamera cam;
-  // cam.Init();
-  // cam.Run();
+  BiCamera cam;
+  cam.Init();
+  cam.Run();
 
-  DBSCAN::ClusterData cl_d = DBSCAN::gen_cluster_data( 3, 100 );
-  DBSCAN dbs(0.1, 5, 1); // threshold 0.1, minPt 5, thread 1
-  dbs.fit( cl_d );
-  cout << dbs << endl;
+  // DBSCAN::ClusterData cl_d = DBSCAN::gen_cluster_data( 3, 100 );
+  // DBSCAN dbs(0.1, 5, 1); // threshold 0.1, minPt 5, thread 1
+  // dbs.fit( cl_d );
+  // cout << dbs << endl;
 }
