@@ -224,7 +224,7 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
 
   std::vector<pcl::PointIndices> cluster_indices;
   pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-  ec.setClusterTolerance (5); 
+  ec.setClusterTolerance (5); // tolerant distance
   ec.setMinClusterSize (1000); // minimum cluster size
   ec.setMaxClusterSize (20000); // maximum cluster size
   ec.setSearchMethod (tree);
@@ -328,6 +328,43 @@ ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) 
   return result;
 }
 
+void BiCamera::Show_Rviz()
+{
+  PC::Ptr msg (new PC);
+  PC::Ptr msg2 (new PC);
+
+  msg->header.frame_id = "map";
+  msg->height = temp_cloud_ptr[RVIZ-1]->points.size();
+  msg->width = 1;
+  msg->is_dense = true;
+  msg->points.resize(temp_cloud_ptr[RVIZ-1]->points.size()); // necessary
+
+  msg2->header.frame_id = "map";
+  msg2->height = temp_cloud_ptr[RVIZ-2]->points.size();
+  msg2->width = 1;
+  msg2->is_dense = true;
+  msg2->points.resize(temp_cloud_ptr[RVIZ-2]->points.size());
+      
+  for (size_t i = 0; i < msg->points.size (); ++i)
+    {
+      msg->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
+      msg->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
+      msg->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
+    }
+
+  for (size_t i = 0; i < msg2->points.size (); ++i)
+    {
+      msg2->points[i].x = temp_cloud_ptr[RVIZ-2]->points[i].x / 255.0 * SCALE;
+      msg2->points[i].y = temp_cloud_ptr[RVIZ-2]->points[i].y / 255.0 * SCALE;
+      msg2->points[i].z = temp_cloud_ptr[RVIZ-2]->points[i].z / 255.0 * SCALE;
+    }
+      
+  pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
+  pub.publish (msg);     
+  pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
+  pub2.publish (msg2);
+}
+
 void BiCamera::Run()
 {
   Mat left, disp;
@@ -337,9 +374,6 @@ void BiCamera::Run()
   
   loop_rate = new ros::Rate(4);
   flag = false;
-  
-  PC::Ptr msg (new PC);
-  PC::Ptr msg2 (new PC);
 
   while (nh.ok())
     {
@@ -369,31 +403,15 @@ void BiCamera::Run()
       
       ProcessTest(disp); // estimate test poses
 
-      msg->header.frame_id = "map";
-      msg->height = temp_cloud_ptr[RVIZ-1]->points.size();
-      msg->width = 1;
-      msg->is_dense = true;
-      msg->points.resize(temp_cloud_ptr[RVIZ-1]->points.size()); // necessary
+      Show_Rviz();
+	
+      ros::spinOnce ();
+      loop_rate->sleep (); // private
 
-      msg2->header.frame_id = "map";
-      msg2->height = temp_cloud_ptr[RVIZ-2]->points.size();
-      msg2->width = 1;
-      msg2->is_dense = true;
-      msg2->points.resize(temp_cloud_ptr[RVIZ-2]->points.size());
       
-      for (size_t i = 0; i < msg->points.size (); ++i)
-      	{
-      	  msg->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
-      	  msg->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
-      	  msg->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
-      	}
-
-      for (size_t i = 0; i < msg2->points.size (); ++i)
-      	{
-	  msg2->points[i].x = temp_cloud_ptr[RVIZ-2]->points[i].x / 255.0 * SCALE;
-      	  msg2->points[i].y = temp_cloud_ptr[RVIZ-2]->points[i].y / 255.0 * SCALE;
-      	  msg2->points[i].z = temp_cloud_ptr[RVIZ-2]->points[i].z / 255.0 * SCALE;
-	}
+      finish = clock();
+      totaltime = (double)(finish - start);
+      cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
 
       char key = waitKey(50);
       if(key == 'q') // quit
@@ -407,19 +425,6 @@ void BiCamera::Run()
       // 	  imwrite(left_name, left);
       // 	  imwrite(disp_name, disp);
       // 	}
-      
-      pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
-      pub.publish (msg);     
-      pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
-      pub2.publish (msg2);
-	
-      ros::spinOnce ();
-      loop_rate->sleep (); // private
-
-      
-      finish = clock();
-      totaltime = (double)(finish - start);
-      cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
     }
 }
 

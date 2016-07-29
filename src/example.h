@@ -69,6 +69,7 @@ public:
   void RemoveNoise(PC::Ptr cloud); // remove noises, e.g. celling, ground
   void FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud); // filter point clouds
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
+  void Show_Rviz(); // show in rviz
   ~BiCamera();
 
 private:
