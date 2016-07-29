@@ -2,7 +2,9 @@
 
 BiCamera::~BiCamera()
 {
+  delete c;
   delete loop_rate;
+  delete[] img_data;
 }
 
 void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) // need K
@@ -76,17 +78,30 @@ void BiCamera::FitPlane(PC::Ptr cloud,PC::Ptr fit_cloud) // need K
 void BiCamera::Init()
 {
   // ros publish
-  pub = nh.advertise<PC> ("points2", 1);
+  pub = nh.advertise<PC> ("points_temp", 1);
+  pub2 = nh.advertise<PC> ("points_test", 1);
 
-  // camera frame configuration
+  // set and open camera
+  sel = CAM_STEREO_752X480_LD_30FPS;
+  c = new movesense::MoveSenseCamera(sel);
+
+  //  # if use camera
+  // if(!(movesense::MS_SUCCESS == c->OpenCamera()))
+  //   {
+  //     std::cout << "Open Camera Failed!" << std::endl;
+  //     std::exit(1);
+  //   }
   width  = 752;
   height = 480;
+  len  = width * height * 2;
+  img_data = new unsigned char[len];
 }
 
 void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
 {
   char left_name[60];
   char disp_name[60];
+  Mat left, disp;
   for (int i = 0; i < TEMPNUM; i++)
     {
       // create temperary point clouds storaging data
@@ -105,14 +120,14 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       disp = imread(disp_name, 0);
       
       DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
-      //imshow("aa", disp);
       
       // RemoveNoise(temp_cloud); // remove ground, celling, obstacles
 
-      PC::Ptr filter_cloud(new PC);
-      FilterPc(temp_cloud, filter_cloud); // filter point clouds
-      temp_cloud_ptr.push_back(temp_cloud);
+      PC::Ptr cloud_filtered(new PC);
+      FilterPc(temp_cloud, cloud_filtered); // filter point clouds
+      temp_cloud_ptr.push_back(cloud_filtered);
     }
+  cout << "ProcessTemplate over.\n";
 }
 
 void BiCamera::ProcessTest(Mat& disp) 
@@ -133,24 +148,25 @@ void BiCamera::ProcessTest(Mat& disp)
   cloud->width = width;
   cloud->is_dense = false;
   cloud->points.resize(cloud->width * cloud->height);
-  FilterPc(test_cloud, cloud); // filter point clouds
+  //FilterPc(test_cloud, cloud); // filter point clouds
 
   // match two point clouds using ICP
   PC::Ptr output(new PC);
   output->header.frame_id = "map";
-  float score = 0.0, min = 1000000.0;
+  float score = 0.0,  mmin = 1000000.0;
   int min_index = 0;
   for (int i = 0; i < TEMPNUM; i++)
     {
       score = MatchTwoPc(temp_cloud_ptr[i], test_cloud, output);
-      if (score <= min)
+      if (score <= mmin)
 	{
-	  min = score;
+	  mmin = score;
 	  min_index = i;
 	}
     }
-  ROS_WARN("This image is similiar to disp_%d  score: %d\n", min_index + 1, min);
-  //cout << "This image is similiar to disp_" << min_index + 1 << "  score: " << min << endl;
+  // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, mmin);
+  printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, mmin);
+  cout << "ProcessTest over.\n";
 }
 
 void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud) 
@@ -186,9 +202,9 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
 	if (z > 1000 && z < 2000)
 	  // && y / 255.0 > (-6) && y / 255.0 < 3)
 	 {
-	    cloud->points[index].x = x; // 255.0f is just for show in rviz
-	    cloud->points[index].y = y;
-	    cloud->points[index].z = z;
+	    cloud->points[index].x = x / SCALE; // 255.0f is just for show in rviz
+	    cloud->points[index].y = y / SCALE;
+	    cloud->points[index].z = z / SCALE;
 	    index++;
 	 }
       }
@@ -205,30 +221,50 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
     }
 }
 
-void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud)
-{
-  // filter_cloud = cloud;
-  
-  pcl::PCLPointCloud2::Ptr cloud_filtered_blob(new pcl::PCLPointCloud2), cloud_blob(new pcl::PCLPointCloud2);
-  pcl::toPCLPointCloud2(*cloud, *cloud_blob); // convert PC::Ptr to pcl::PCLPointCloud2
+void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered)
+{ 
+  // pcl::PCLPointCloud2::Ptr cloud_filtered_blob(new pcl::PCLPointCloud2), cloud_blob(new pcl::PCLPointCloud2);
+  // pcl::toPCLPointCloud2(*cloud, *cloud_blob); // convert PC::Ptr to pcl::PCLPointCloud2
 
-  pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-  sor.setInputCloud(cloud_blob);
-  sor.setLeafSize(15, 15, 15);
-  sor.filter(*cloud_filtered_blob);
-
-  // pcl::PassThrough pass;
-  // pass.setInputCloud(cloud_blob);
-  // pass.setFilterFieldName("z");
-  // pass.setFilterLimits(0.0, 1.0);
-  // //pass.setFilterLimitsNegative (true);
-  // pass.filter(*cloud_filtered_blob);//滤波后的数据存储在cloud_filtered中
+  // pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
+  // sor.setInputCloud(cloud_blob);
+  // sor.setLeafSize(0.01, 0.01, 0.01);
+  // sor.filter(*cloud_filtered_blob);
   
-  pcl::fromPCLPointCloud2(*cloud_filtered_blob, *filter_cloud); // convert pcl::PCLPointCloud2 to PC::Ptr
-  cout << cloud->points.size() << "   " << filter_cloud->points.size() << endl;
+  // pcl::fromPCLPointCloud2(*cloud_filtered_blob, *filter_cloud); // convert pcl::PCLPointCloud2 to PC::Ptr
+  
+  pcl::VoxelGrid<pcl::PointXYZ> vg;
+  vg.setInputCloud (cloud);
+  vg.setLeafSize (1, 1, 1);
+  vg.filter (*cloud_filtered);
+  cout << cloud->points.size() << "   " << cloud_filtered->points.size() << endl;
+  
+  // pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  // tree->setInputCloud (cloud_filtered);
+
+  // std::vector<pcl::PointIndices> cluster_indices;
+  // pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+  // ec.setClusterTolerance (0.02); // 2cm
+  // ec.setMinClusterSize (100); // minimum cluster size
+  // ec.setMaxClusterSize (20000); // maximum cluster size
+  // ec.setSearchMethod (tree);
+  // ec.setInputCloud (cloud_filtered);
+  // ec.extract (cluster_indices);
+
+  // for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
+  // {
+  //   PC::Ptr cloud_cluster (new PC);
+  //   for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
+  //     cloud_cluster->points.push_back (cloud_filtered->points[*pit]); 
+  //   cloud_cluster->width = cloud_cluster->points.size ();
+  //   cloud_cluster->height = 1;
+  //   cloud_cluster->is_dense = true;
+
+  //   cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << endl;
+  // }
 }
 
-float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // change source
+float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
 {
   PC::Ptr src(new PC);  
   PC::Ptr tgt(new PC);  
@@ -249,7 +285,7 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ch
   
   output->resize(tgt->size() + output->size());  
   for (int i = 0; i < tgt->size(); i++)  
-    output->push_back(tgt->points[i]); //合并  
+    output->push_back(tgt->points[i]); // merge two points 
   //cout << "After registration using ICP:" << output->size() << endl;
   cout << icp.getFinalTransformation() << endl;
   return icp.getFitnessScore();
@@ -257,52 +293,82 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ch
 
 void BiCamera::Run()
 {
+  Mat left, disp;
+  
   // create filter_point which points to all template pointclouds
   ProcessTemplate(); // preprocess template
   
   loop_rate = new ros::Rate(4);
   flag = false;
   
-  int q = 3;
-  q--;
-  pcl::PointCloud<pcl::PointXYZ>::Ptr msg (new pcl::PointCloud<pcl::PointXYZ>);
-  msg->header.frame_id = "map";
-  msg->height = height;
-  msg->width = width;
-  msg->is_dense = false;
-  msg->points.resize(msg->width * msg->height);  
+  PC::Ptr msg (new PC);
+
+  PC::Ptr msg2 (new PC);
+  msg2->header.frame_id = "map";
+  msg2->height = height;
+  msg2->width = width;
+  msg2->is_dense = false;
+  msg2->points.resize(msg2->width * msg2->height);
 
   while (nh.ok())
-    { 	
+    {
+      // # if use camera
+      // c->GetImageData(img_data, len);
+      // Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
+      // for(int i = 0 ; i < height; i++)
+      // 	{
+      // 	  memcpy(left.data + width * i, img_data + (2 * i) * width, width);
+      // 	  memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
+      // 	}
+
       //use mid-filter for disp
-      //medianBlur(disp, disp, 5);
+      // medianBlur(disp, disp, 5);
+      
 
       char left_name[60];
       char disp_name[60];
-      int i = 9;
-      sprintf(left_name, "img/test/left_%d.jpg", i);
-      sprintf(disp_name, "img/test/disp_%d.jpg", i);
+      sprintf(left_name, "img/test/left_%d.jpg", TIM);
+      sprintf(disp_name, "img/test/disp_%d.jpg", TIM);
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
       
       ProcessTest(disp); // estimate test poses
 
+      msg->header.frame_id = "map";
+      msg->height = temp_cloud_ptr[RVIZ-1]->points.size();
+      msg->width = 1;
+      msg->is_dense = true;
+      msg->points.resize(temp_cloud_ptr[RVIZ-1]->points.size()); // necessary
+      
       for (size_t i = 0; i < msg->points.size (); ++i)
-  	{
-  	  msg->points[i].x = temp_cloud_ptr[q]->points[i].x / 255.0;
-  	  msg->points[i].y = temp_cloud_ptr[q]->points[i].y / 255.0;
-  	  msg->points[i].z = temp_cloud_ptr[q]->points[i].z / 255.0;
-  	}
+      	{
+      	  msg->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
+      	  msg->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
+      	  msg->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
+      	  //msg2->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
+      	  //msg2->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
+      	  //msg2->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
+      	}
 
-      char key = waitKey(100);
+      char key = waitKey(50);
       if(key == 'q') // quit
   	break;
-
-      //pcl_conversions::toPCL(ros::Time::now(), temp_cloud_ptr[0]->header.stamp);
-      //pub.publish(temp_cloud_ptr[0]);
+      // # if use camera
+      // else if (key == 's') // save
+      // 	{
+      // 	  sprintf(left_name, "left_%d.jpg", num);
+      // 	  sprintf(disp_name, "disp_%d.jpg", num);
+      // 	  num++;
+      // 	  imwrite(left_name, left);
+      // 	  imwrite(disp_name, disp);
+      // 	}
       
       pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
-      pub.publish (msg);      
+      pub.publish (msg);
+      
+      //pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
+      //pub2.publish (msg2);
+	
       ros::spinOnce ();
       loop_rate->sleep (); // private
     }

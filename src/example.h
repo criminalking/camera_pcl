@@ -8,15 +8,23 @@
 // PCL specific includes
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl/point_cloud.h>
-#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl_ros/point_cloud.h>
-#include <pcl/ModelCoefficients.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl_ros/point_cloud.h>
+
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/voxel_grid.h>
+
+#include <pcl/features/normal_3d.h>
+#include <pcl/kdtree/kdtree.h>
+
+#include <pcl/ModelCoefficients.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/segmentation/extract_clusters.h>
+
 #include <pcl/registration/icp.h>
 // opencv specific includes
 #include <cv_bridge/cv_bridge.h>
@@ -34,6 +42,11 @@ typedef pcl::PointCloud<pcl::PointXYZ> PC;
 using namespace std;
 using namespace cv;
 using namespace clustering;
+
+// just for test
+#define RVIZ 2 // rviz show the RVIZ-th template
+#define TIM 10 // number of test image
+#define SCALE 20.0
 
 class BiCamera
 {
@@ -53,6 +66,7 @@ private:
   // for ros
   ros::NodeHandle nh;
   ros::Publisher pub;
+  ros::Publisher pub2;
   ros::Rate *loop_rate;
 
   // for DBSCAN
@@ -65,7 +79,7 @@ private:
   int height;
   int len;
   unsigned char *img_data;
-  Mat left, disp, left2, disp2;
+  //Mat left, disp;
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr;
 
