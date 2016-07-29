@@ -107,7 +107,6 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       // create temperary point clouds storaging data
       PC::Ptr temp_cloud(new PC);
 
-      temp_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz  
       temp_cloud->height = height;
       temp_cloud->width = width;
       temp_cloud->is_dense = false;
@@ -141,7 +140,6 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
 void BiCamera::ProcessTest(Mat& disp) 
 {
   PC::Ptr test_cloud(new PC);
-  test_cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
   test_cloud->height = height;
   test_cloud->width = width;
   test_cloud->is_dense = false;
@@ -150,7 +148,6 @@ void BiCamera::ProcessTest(Mat& disp)
   DepthImageToPc(disp, test_cloud); // depth image convert to point clouds
 
   PC::Ptr cloud(new PC);
-  cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
   cloud->height = height;
   cloud->width = width;
   cloud->is_dense = false;
@@ -162,14 +159,14 @@ void BiCamera::ProcessTest(Mat& disp)
   // match two point clouds using ICP
   PC::Ptr output(new PC);
   output->header.frame_id = "map";
-  float score = 0.0,  min = 1000000.0;
+  float min = FLT_MAX;
   int min_index = 0;
   for (int i = 0; i < TEMPNUM; i++)
     {
-      score = MatchTwoPc(temp_cloud_ptr[i], cloud, output);
-      if (score <= min)
+      ICP_result result = MatchTwoPc(temp_cloud_ptr[i], cloud, output);
+      if (result.conv == true && result.score <= min)
 	{
-	  min = score;
+	  min = result.score;
 	  min_index = i;
 	}
     }
@@ -208,7 +205,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
 	y = (v - kCv) * z / kF;
 
 	// storage data to cloud
-	if (z > 1000 && z < 2000)
+	if (z > 1000 && z < 2000) // constraint z-axis
 	  {
 	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
 	    cloud->points[index].y = y / SCALE;
@@ -237,13 +234,13 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
   cout << cluster_indices.size() << endl;
 
   // find cluster which has minimum z-range 
-  float zrange_min = 1000000.0;
+  float zrange_min = FLT_MAX;
   int index = 0;
   int min_index = 0;
   for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
   {
     PC::Ptr cloud_cluster (new PC);
-    float z_max = 0.0, z_min = 1000000.0;
+    float z_max = 0.0, z_min = FLT_MAX;
     for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
       {
 	cloud_cluster->points.push_back (cloud->points[*pit]);
@@ -300,7 +297,7 @@ void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered)
   cout << cloud->points.size() << "   " << cloud_filtered->points.size() << endl;
 }
 
-float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
+ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
 {
   PC::Ptr src(new PC);  
   PC::Ptr tgt(new PC);  
@@ -309,10 +306,10 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // IC
   src = source;  
   
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
-  icp.setMaxCorrespondenceDistance(0.1); // this param is very important!!!  
-  icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
-  icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
-  icp.setMaximumIterations(100); // if iteration smaller than threshold, converge 
+  icp.setMaxCorrespondenceDistance(0.03); // this param is very important!!!  
+  //icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
+  //icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
+  //icp.setMaximumIterations(100); // if iteration smaller than threshold, converge 
   
   icp.setInputSource(src);  
   icp.setInputTarget(tgt);  
@@ -324,7 +321,11 @@ float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // IC
     output->push_back(tgt->points[i]); // merge two points 
   //cout << "After registration using ICP:" << output->size() << endl;
   cout << icp.getFinalTransformation() << endl;
-  return icp.getFitnessScore();
+
+  ICP_result result;
+  result.conv = icp.hasConverged();
+  result.score = icp.getFitnessScore();
+  return result;
 }
 
 void BiCamera::Run()
@@ -354,6 +355,7 @@ void BiCamera::Run()
       //use mid-filter for disp
       // medianBlur(disp, disp, 5);
 
+      // compute time
       clock_t start, finish;
       double totaltime;
       start = clock();
@@ -393,8 +395,6 @@ void BiCamera::Run()
       	  msg2->points[i].z = temp_cloud_ptr[RVIZ-2]->points[i].z / 255.0 * SCALE;
 	}
 
-      cout << msg2->points.size () << "  ";
-
       char key = waitKey(50);
       if(key == 'q') // quit
   	break;
@@ -409,8 +409,7 @@ void BiCamera::Run()
       // 	}
       
       pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
-      pub.publish (msg);
-      
+      pub.publish (msg);     
       pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
       pub2.publish (msg2);
 	

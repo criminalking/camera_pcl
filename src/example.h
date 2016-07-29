@@ -1,5 +1,6 @@
 #include <iostream>
 #include <stdio.h>
+#include <float.h>
 #include <math.h>
 #include <fstream>
 #include <time.h>
@@ -39,6 +40,7 @@
 
 #define K 10
 #define TEMPNUM 6 // define number of templates
+#define SCALE 20.0 // reduce the value of data in order to accelerate
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
@@ -47,8 +49,13 @@ using namespace clustering;
 
 // just for test
 #define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 8 // number of test image
-#define SCALE 20.0 // reduce the value of data in order to accelerate
+#define TIM 10 // number of test image
+
+struct ICP_result
+{
+  bool conv;
+  float score;
+};
 
 class BiCamera
 {
@@ -61,7 +68,7 @@ public:
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
   void RemoveNoise(PC::Ptr cloud); // remove noises, e.g. celling, ground
   void FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud); // filter point clouds
-  float MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
+  ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   ~BiCamera();
 
 private:
