@@ -25,6 +25,8 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 
+#include <pcl/visualization/pcl_visualizer.h>
+
 #include <pcl/registration/icp.h>
 // opencv specific includes
 #include <cv_bridge/cv_bridge.h>

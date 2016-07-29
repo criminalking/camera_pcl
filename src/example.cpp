@@ -120,11 +120,11 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       disp = imread(disp_name, 0);
       
       DepthImageToPc(disp, temp_cloud); // depth image convert to point clouds
-      
-      // RemoveNoise(temp_cloud); // remove ground, celling, obstacles
 
       PC::Ptr cloud_filtered(new PC);
       FilterPc(temp_cloud, cloud_filtered); // filter point clouds
+      RemoveNoise(cloud_filtered); // remove ground, celling, obstacles
+      
       temp_cloud_ptr.push_back(cloud_filtered);
     }
   cout << "ProcessTemplate over.\n";
@@ -140,7 +140,6 @@ void BiCamera::ProcessTest(Mat& disp)
   test_cloud->points.resize(test_cloud->width * test_cloud->height);
 
   DepthImageToPc(disp, test_cloud); // depth image convert to point clouds
-  // RemoveNoise(test_cloud); // remove ground, celling, obstacles
 
   PC::Ptr cloud(new PC);
   cloud->header.frame_id = "map"; // set pointcloud which needs to be shown on rviz
@@ -148,24 +147,26 @@ void BiCamera::ProcessTest(Mat& disp)
   cloud->width = width;
   cloud->is_dense = false;
   cloud->points.resize(cloud->width * cloud->height);
-  //FilterPc(test_cloud, cloud); // filter point clouds
+  FilterPc(test_cloud, cloud); // filter point clouds
+
+  RemoveNoise(cloud); // remove ground, celling, obstacles
 
   // match two point clouds using ICP
   PC::Ptr output(new PC);
   output->header.frame_id = "map";
-  float score = 0.0,  mmin = 1000000.0;
+  float score = 0.0,  min = 1000000.0;
   int min_index = 0;
   for (int i = 0; i < TEMPNUM; i++)
     {
-      score = MatchTwoPc(temp_cloud_ptr[i], test_cloud, output);
-      if (score <= mmin)
+      score = MatchTwoPc(temp_cloud_ptr[i], cloud, output);
+      if (score <= min)
 	{
-	  mmin = score;
+	  min = score;
 	  min_index = i;
 	}
     }
-  // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, mmin);
-  printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, mmin);
+  // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
+  printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
   cout << "ProcessTest over.\n";
 }
 
@@ -213,55 +214,48 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
 
 void BiCamera::RemoveNoise(PC::Ptr cloud)
 {
-  // remove ground or wall
-  // search for connected domain
-  for (size_t i = 0; i < cloud->points.size (); ++i)
-    {
-      
-    }
+  // search for connected domain(cluster) to remove ground or wall
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud (cloud);
+
+  std::vector<pcl::PointIndices> cluster_indices;
+  pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+  ec.setClusterTolerance (5); 
+  ec.setMinClusterSize (1000); // minimum cluster size
+  ec.setMaxClusterSize (20000); // maximum cluster size
+  ec.setSearchMethod (tree);
+  ec.setInputCloud (cloud);
+  ec.extract (cluster_indices);
+
+  cout << cluster_indices.size() << endl;
+  int iii = 0;
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
+  {
+    PC::Ptr cloud_cluster (new PC);
+    for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
+      {
+	cloud_cluster->points.push_back (cloud->points[*pit]);
+      }
+    cloud_cluster->width = cloud_cluster->points.size ();
+    cloud_cluster->height = 1;
+    cloud_cluster->is_dense = true;
+
+    // set color
+    //pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> source_cloud_color_handler (cloud, 255, 0, 0);
+    if (iii == 1) *cloud = *cloud_cluster;
+    iii++;
+
+    cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << endl;
+  }
 }
 
 void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered)
 { 
-  // pcl::PCLPointCloud2::Ptr cloud_filtered_blob(new pcl::PCLPointCloud2), cloud_blob(new pcl::PCLPointCloud2);
-  // pcl::toPCLPointCloud2(*cloud, *cloud_blob); // convert PC::Ptr to pcl::PCLPointCloud2
-
-  // pcl::VoxelGrid<pcl::PCLPointCloud2> sor;
-  // sor.setInputCloud(cloud_blob);
-  // sor.setLeafSize(0.01, 0.01, 0.01);
-  // sor.filter(*cloud_filtered_blob);
-  
-  // pcl::fromPCLPointCloud2(*cloud_filtered_blob, *filter_cloud); // convert pcl::PCLPointCloud2 to PC::Ptr
-  
   pcl::VoxelGrid<pcl::PointXYZ> vg;
   vg.setInputCloud (cloud);
   vg.setLeafSize (1, 1, 1);
   vg.filter (*cloud_filtered);
   cout << cloud->points.size() << "   " << cloud_filtered->points.size() << endl;
-  
-  // pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
-  // tree->setInputCloud (cloud_filtered);
-
-  // std::vector<pcl::PointIndices> cluster_indices;
-  // pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-  // ec.setClusterTolerance (0.02); // 2cm
-  // ec.setMinClusterSize (100); // minimum cluster size
-  // ec.setMaxClusterSize (20000); // maximum cluster size
-  // ec.setSearchMethod (tree);
-  // ec.setInputCloud (cloud_filtered);
-  // ec.extract (cluster_indices);
-
-  // for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
-  // {
-  //   PC::Ptr cloud_cluster (new PC);
-  //   for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
-  //     cloud_cluster->points.push_back (cloud_filtered->points[*pit]); 
-  //   cloud_cluster->width = cloud_cluster->points.size ();
-  //   cloud_cluster->height = 1;
-  //   cloud_cluster->is_dense = true;
-
-  //   cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << endl;
-  // }
 }
 
 float BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
@@ -332,7 +326,7 @@ void BiCamera::Run()
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
       
-      ProcessTest(disp); // estimate test poses
+      //ProcessTest(disp); // estimate test poses
 
       msg->header.frame_id = "map";
       msg->height = temp_cloud_ptr[RVIZ-1]->points.size();
