@@ -47,8 +47,8 @@ using namespace clustering;
 
 // just for test
 #define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 10 // number of test image
-#define SCALE 20.0
+#define TIM 8 // number of test image
+#define SCALE 20.0 // reduce the value of data in order to accelerate
 
 class BiCamera
 {
@@ -59,7 +59,7 @@ public:
   void Init(); // initialize
   void Run(); // get a frame and process 
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
-  void RemoveNoise(PC::Ptr cloud); // remove noises from environment
+  void RemoveNoise(PC::Ptr cloud); // remove noises, e.g. celling, ground
   void FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud); // filter point clouds
   float MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   ~BiCamera();

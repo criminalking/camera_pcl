@@ -114,8 +114,16 @@ void BiCamera::ProcessTemplate() // FIXME: add point-list point to filter_cloud
       temp_cloud->points.resize(temp_cloud->width * temp_cloud->height);
 
       // read image
-      sprintf(left_name, "img/template/left_%d.jpg", i + 1);
-      sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
+      //  if (i == 0)
+      //	{
+	  sprintf(left_name, "img/template/left_%d.jpg", i + 1);
+	  sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
+	  //	}
+	  //    else
+	  //	{
+	  //	  sprintf(left_name, "img/test/left_%d.jpg", i + 6);
+	  //	  sprintf(disp_name, "img/test/disp_%d.jpg", i + 6);
+	  //	}
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
       
@@ -201,9 +209,8 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
 
 	// storage data to cloud
 	if (z > 1000 && z < 2000)
-	  // && y / 255.0 > (-6) && y / 255.0 < 3)
-	 {
-	    cloud->points[index].x = x / SCALE; // 255.0f is just for show in rviz
+	  {
+	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
 	    cloud->points[index].y = y / SCALE;
 	    cloud->points[index].z = z / SCALE;
 	    index++;
@@ -228,24 +235,59 @@ void BiCamera::RemoveNoise(PC::Ptr cloud)
   ec.extract (cluster_indices);
 
   cout << cluster_indices.size() << endl;
-  int iii = 0;
+
+  // find cluster which has minimum z-range 
+  float zrange_min = 1000000.0;
+  int index = 0;
+  int min_index = 0;
   for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
   {
     PC::Ptr cloud_cluster (new PC);
+    float z_max = 0.0, z_min = 1000000.0;
     for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
       {
 	cloud_cluster->points.push_back (cloud->points[*pit]);
+	if (cloud->points[*pit].z < z_min) z_min = cloud->points[*pit].z;
+	if (cloud->points[*pit].z > z_max) z_max = cloud->points[*pit].z;
       }
+    
     cloud_cluster->width = cloud_cluster->points.size ();
     cloud_cluster->height = 1;
     cloud_cluster->is_dense = true;
 
-    // set color
-    //pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> source_cloud_color_handler (cloud, 255, 0, 0);
-    if (iii == 1) *cloud = *cloud_cluster;
-    iii++;
+    // compute z-axis range of this cluster
+    float z_range = z_max - z_min;
+    if (z_range <= zrange_min)
+      {
+ 	// *cloud = *cloud_cluster; // if here, some strange situations exist.(some strange noises)
+     	zrange_min = z_range;
+     	min_index = index;
+      }
+
+    // if (index == 1) *cloud = *cloud_cluster;
+    ++index;
 
     cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << endl;
+  }
+
+  // assign minimum z-range cluster to cloud
+  index = 0;
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
+  {
+    if (index == min_index)
+      {
+  	PC::Ptr cloud_cluster (new PC);
+  	for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
+  	  {
+  	    cloud_cluster->points.push_back (cloud->points[*pit]);
+  	  }
+  	cloud_cluster->width = cloud_cluster->points.size ();
+  	cloud_cluster->height = 1;
+  	cloud_cluster->is_dense = true;
+  	*cloud = *cloud_cluster;
+  	break;
+      }
+    else ++index;
   }
 }
 
@@ -296,13 +338,7 @@ void BiCamera::Run()
   flag = false;
   
   PC::Ptr msg (new PC);
-
   PC::Ptr msg2 (new PC);
-  msg2->header.frame_id = "map";
-  msg2->height = height;
-  msg2->width = width;
-  msg2->is_dense = false;
-  msg2->points.resize(msg2->width * msg2->height);
 
   while (nh.ok())
     {
@@ -317,8 +353,11 @@ void BiCamera::Run()
 
       //use mid-filter for disp
       // medianBlur(disp, disp, 5);
-      
 
+      clock_t start, finish;
+      double totaltime;
+      start = clock();
+  
       char left_name[60];
       char disp_name[60];
       sprintf(left_name, "img/test/left_%d.jpg", TIM);
@@ -326,23 +365,35 @@ void BiCamera::Run()
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
       
-      //ProcessTest(disp); // estimate test poses
+      ProcessTest(disp); // estimate test poses
 
       msg->header.frame_id = "map";
       msg->height = temp_cloud_ptr[RVIZ-1]->points.size();
       msg->width = 1;
       msg->is_dense = true;
       msg->points.resize(temp_cloud_ptr[RVIZ-1]->points.size()); // necessary
+
+      msg2->header.frame_id = "map";
+      msg2->height = temp_cloud_ptr[RVIZ-2]->points.size();
+      msg2->width = 1;
+      msg2->is_dense = true;
+      msg2->points.resize(temp_cloud_ptr[RVIZ-2]->points.size());
       
       for (size_t i = 0; i < msg->points.size (); ++i)
       	{
       	  msg->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
       	  msg->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
       	  msg->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
-      	  //msg2->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
-      	  //msg2->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
-      	  //msg2->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
       	}
+
+      for (size_t i = 0; i < msg2->points.size (); ++i)
+      	{
+	  msg2->points[i].x = temp_cloud_ptr[RVIZ-2]->points[i].x / 255.0 * SCALE;
+      	  msg2->points[i].y = temp_cloud_ptr[RVIZ-2]->points[i].y / 255.0 * SCALE;
+      	  msg2->points[i].z = temp_cloud_ptr[RVIZ-2]->points[i].z / 255.0 * SCALE;
+	}
+
+      cout << msg2->points.size () << "  ";
 
       char key = waitKey(50);
       if(key == 'q') // quit
@@ -360,11 +411,16 @@ void BiCamera::Run()
       pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
       pub.publish (msg);
       
-      //pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
-      //pub2.publish (msg2);
+      pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
+      pub2.publish (msg2);
 	
       ros::spinOnce ();
       loop_rate->sleep (); // private
+
+      
+      finish = clock();
+      totaltime = (double)(finish - start);
+      cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
     }
 }
 
