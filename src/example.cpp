@@ -418,7 +418,9 @@ void BiCamera::ShowRviz()
 
   PC::Ptr cloud_transformed (new PC);
   cloud_transformed->header.frame_id = "map";
-  Transform(msg, cloud_transformed);
+  Eigen::Matrix3d m(1,3);
+  m << 1.0, 0.0, 0.0;
+  Transform(msg, cloud_transformed, M_PI/4, m);
 
   // PC::Ptr output(new PC);
   // output->header.frame_id = "map";
@@ -443,14 +445,13 @@ void BiCamera::ShowRviz()
   pub2.publish (cloud_transformed);
 }
 
-void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans)
+void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans, float theta, Eigen::Matrix3d m)
 {
-  float theta = M_PI/4; // rotate pi/8
   Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
-  
+
   // Define a translation of 2.5 meters on the x axis.
-  transform_2.translation() << 1.0, 0.0, 0.0; // transform (1, 0, 0)
-  
+  transform_2.translation() << m(0,0), m(0,1), m(0,2);
+
   // theta radians arround Z axis
   transform_2.rotate (Eigen::AngleAxisf (theta, Eigen::Vector3f::UnitZ()));
   

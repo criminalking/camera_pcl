@@ -72,7 +72,7 @@ public:
   void FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz
-  void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed); // transform a point clouds
+  void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point clouds, theta should be radian
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point clouds, e.g. rotate and scale
   void FitLine(PC::Ptr cloud);
   
