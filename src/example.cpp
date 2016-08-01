@@ -1,5 +1,8 @@
 #include "example.h"
 
+// FIXME: add const
+// FIXME: many params have contacts, such as SCALE and HEIGHT
+
 BiCamera::~BiCamera()
 {
   delete c;
@@ -353,12 +356,32 @@ void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered)
 
 void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
 {
+  // first rotate using PCA
   pcl::PCA<pcl::PointXYZ> pca(*cloud);
-  // pca.setInputCloud (cloud->makeShared ());
   Eigen::Matrix3f eigen_vector = pca.getEigenVectors();
   cout << endl << eigen_vector << endl;
   float tan_theta = eigen_vector(1, 0) / eigen_vector(0, 0);
-  cout << "arctan  " << atan (tan_theta) * 180 / M_PI << endl;
+  float theta = atan (tan_theta); // degree
+  cout << "arctan  " << theta * 180 / M_PI << endl;
+  
+  Eigen::Matrix3d m(1,3);
+  m << 0.0, 0.0, 0.0;
+  Transform(cloud, cloud_normalized, -theta, m);
+
+  // second translate and scale
+  // get minmum and maximum points in the x-axis and y-axis
+  pcl::PointXYZ min_pt, max_pt;
+  pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt);
+  float range = max_pt.x - min_pt.x; // range of x-axis
+
+  float scale = HEIGHT / range;
+  // all points should multiple scale
+  for (int i = 0; i < cloud->points.size(); ++i)
+    {
+      cloud_normalized->points[i].x *= scale;
+      cloud_normalized->points[i].y *= scale;
+      cloud_normalized->points[i].z *= scale;
+    }
 }
 
 ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
@@ -419,7 +442,7 @@ void BiCamera::ShowRviz()
   PC::Ptr cloud_transformed (new PC);
   cloud_transformed->header.frame_id = "map";
   Eigen::Matrix3d m(1,3);
-  m << 1.0, 0.0, 0.0;
+  m << 0.0, 0.0, 0.0;
   Transform(msg, cloud_transformed, M_PI/4, m);
 
   // PC::Ptr output(new PC);
@@ -439,10 +462,10 @@ void BiCamera::ShowRviz()
 
   //FitLine(cloud_transformed); // some errors
       
+  pcl_conversions::toPCL(ros::Time::now(), cloud_normalized->header.stamp);
+  pub.publish (cloud_normalized);     
   pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
-  pub.publish (msg);     
-  pcl_conversions::toPCL(ros::Time::now(), cloud_transformed->header.stamp);
-  pub2.publish (cloud_transformed);
+  pub2.publish (msg);
 }
 
 void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans, float theta, Eigen::Matrix3d m)

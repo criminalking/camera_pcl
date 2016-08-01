@@ -26,6 +26,7 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 
+#include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/pca.h>
 
@@ -42,6 +43,7 @@
 #define K 10
 #define TEMPNUM 6 // define number of templates
 #define SCALE 20.0 // reduce the value of data in order to accelerate
+#define HEIGHT 5.0 // height of a person, for scale 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
