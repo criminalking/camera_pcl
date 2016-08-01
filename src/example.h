@@ -29,6 +29,7 @@
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/pca.h>
+#include <pcl/common/centroid.h>
 
 #include <pcl/registration/icp.h>
 // opencv specific includes
@@ -41,9 +42,9 @@
 //#include "dbscan.h"
 
 #define K 10
-#define TEMPNUM 6 // define number of templates
+#define TEMPNUM 4 // define number of templates
 #define SCALE 20.0 // reduce the value of data in order to accelerate
-#define HEIGHT 5.0 // height of a person, for scale 
+#define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
@@ -51,8 +52,8 @@ using namespace cv;
 //using namespace clustering;
 
 // just for test
-#define RVIZ 1 // rviz show the RVIZ-th template
-#define TIM 7 // number of test image
+#define RVIZ 2 // rviz show the RVIZ-th template
+#define TIM 8 // number of test image
 
 struct ICP_result
 {
