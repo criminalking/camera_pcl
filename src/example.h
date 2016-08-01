@@ -26,7 +26,8 @@
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/segmentation/extract_clusters.h>
 
-#include <pcl/visualization/pcl_visualizer.h>
+#include <pcl/common/transforms.h>
+#include <pcl/common/pca.h>
 
 #include <pcl/registration/icp.h>
 // opencv specific includes
@@ -36,7 +37,7 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 // use DBSCAN
-#include "dbscan.h"
+//#include "dbscan.h"
 
 #define K 10
 #define TEMPNUM 6 // define number of templates
@@ -45,11 +46,11 @@ typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
 using namespace cv;
-using namespace clustering;
+//using namespace clustering;
 
 // just for test
-#define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 10 // number of test image
+#define RVIZ 1 // rviz show the RVIZ-th template
+#define TIM 7 // number of test image
 
 struct ICP_result
 {
@@ -60,16 +61,21 @@ struct ICP_result
 class BiCamera
 {
 public:
+  void Init(); // initialize
+  void Run(); // get a frame and process
+  
   void ProcessTemplate(); // preprocess all template images
   void ProcessTest(Mat& disp); // only process one test image
   void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane 
-  void Init(); // initialize
-  void Run(); // get a frame and process 
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
   void RemoveNoise(PC::Ptr cloud); // remove noises, e.g. celling, ground
-  void FilterPc(PC::Ptr cloud, PC::Ptr filter_cloud); // filter point clouds
+  void FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
-  void Show_Rviz(); // show in rviz
+  void ShowRviz(); // show in rviz
+  void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed); // transform a point clouds
+  void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point clouds, e.g. rotate and scale
+  void FitLine(PC::Ptr cloud);
+  
   ~BiCamera();
 
 private:
@@ -78,9 +84,6 @@ private:
   ros::Publisher pub;
   ros::Publisher pub2;
   ros::Rate *loop_rate;
-
-  // for DBSCAN
-
 
   // for camera
   movesense::CameraMode sel;
