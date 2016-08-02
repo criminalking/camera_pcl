@@ -42,7 +42,7 @@
 //#include "dbscan.h"
 
 #define K 10
-#define TEMPNUM 4 // define number of templates
+#define TEMPNUM 2 // define number of templates
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
@@ -53,7 +53,7 @@ using namespace cv;
 
 // just for test
 #define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 8 // number of test image
+#define TIM 10 // number of test image
 
 struct ICP_result
 {
@@ -71,7 +71,7 @@ public:
   void ProcessTest(Mat& disp); // only process one test image
   void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane 
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
-  void RemoveNoise(PC::Ptr cloud); // remove noises, e.g. celling, ground
+  void GetPeople(PC::Ptr cloud); // get people and remove noises, e.g. celling, ground
   void FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz

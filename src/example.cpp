@@ -102,12 +102,6 @@ void BiCamera::FitLine(PC::Ptr cloud)
   
   seg.segment (*inliers, *coefficients);
 
-  if (inliers->indices.size () == 0)
-    {
-      PCL_ERROR ("Could not estimate a LINE model for the given dataset.");
-    }
-
-
   //finish = clock();
   //totaltime = (double)(finish - start);
   //std::cout << "\nRANSAC的运行时间为" << totaltime << "ms！" << std::endl;
@@ -160,16 +154,19 @@ void BiCamera::ProcessTemplate() //
       temp_cloud->points.resize(temp_cloud->width * temp_cloud->height);
 
       // read image
+      //sprintf(left_name, "img/template/left_%d.jpg", i + 1);
+      //sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
+
       if (i == 0)
       	{
-	  sprintf(left_name, "img/template/left_%d.jpg", i + 2);
-	  sprintf(disp_name, "img/template/disp_%d.jpg", i + 2);
-	}
+      	  sprintf(left_name, "img/template/left_%d.jpg", i + 3);
+      	  sprintf(disp_name, "img/template/disp_%d.jpg", i + 3);
+      	}
       else
-	{
-	  sprintf(left_name, "img/test/left_%d.jpg", i + 7);
-	  sprintf(disp_name, "img/test/disp_%d.jpg", i + 7);
-	}
+      	{
+      	  sprintf(left_name, "img/test/left_%d.jpg", i + 9);
+      	  sprintf(disp_name, "img/test/disp_%d.jpg", i + 9);
+      	}
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
       
@@ -177,7 +174,7 @@ void BiCamera::ProcessTemplate() //
 
       PC::Ptr cloud_filtered(new PC);
       FilterPc(temp_cloud, cloud_filtered); // filter point clouds
-      RemoveNoise(cloud_filtered); // remove ground, celling, obstacles
+      GetPeople(cloud_filtered); // remove ground, celling, obstacles
 
       PC::Ptr cloud_normalized (new PC);
       cloud_normalized->header.frame_id = "map";
@@ -201,7 +198,7 @@ void BiCamera::ProcessTest(Mat& disp)
   PC::Ptr cloud_filtered(new PC);
   FilterPc(cloud, cloud_filtered); // filter point clouds
 
-  RemoveNoise(cloud_filtered); // remove ground, celling, obstacles
+  GetPeople(cloud_filtered); // remove ground, celling, obstacles
 
   PC::Ptr cloud_normalized (new PC);
   cloud_normalized->header.frame_id = "map";
@@ -277,7 +274,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
   cloud->points.resize(index); // remove no-data points
 }
 
-void BiCamera::RemoveNoise(PC::Ptr cloud)
+void BiCamera::GetPeople(PC::Ptr cloud)
 {
   // search for connected domain(cluster) to remove ground or wall
   pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
@@ -361,38 +358,47 @@ void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered)
 void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
 {
   // first rotate using PCA
-  pcl::PCA<pcl::PointXYZ> pca(*cloud);
-  Eigen::Matrix3f eigen_vector = pca.getEigenVectors();
-  cout << endl << eigen_vector << endl;
-  float tan_theta = eigen_vector(1, 0) / eigen_vector(0, 0);
-  float theta = atan (tan_theta); // degree
-  cout << "theta " << theta * 180 / M_PI << endl;
+  // pcl::PCA<pcl::PointXYZ> pca(*cloud);
+  // Eigen::Matrix3f eigen_vector = pca.getEigenVectors();
+  // cout << endl << eigen_vector << endl;
+  // float tan_theta = eigen_vector(1, 0) / eigen_vector(0, 0);
+  // float theta = atan (tan_theta); // degree
+  // cout << "theta " << theta * 180 / M_PI << endl;
   
   Eigen::Matrix3d m(1,3);
   m << 0.0, 0.0, 0.0;
   PC::Ptr cloud_transformed (new PC);
-  Transform(cloud, cloud_transformed, -theta, m);
+  Transform(cloud, cloud_transformed, 0, m);
 
   // second scale
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud_transformed, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
-  float range = max_pt.x - min_pt.x; // range of x-axis
-  cout << "range" << range << endl;
-  float scale = HEIGHT / range;
+  float x_range = max_pt.x - min_pt.x; // range of x-axis
+  float x_middle = x_range / 2 + min_pt.x;
+  cout << "x_range  " << x_range << endl;
+  float scale = HEIGHT / x_range;
+  float y_offset = 0.0;
+  int index = 0;
   // all points should multiple scale
   for (int i = 0; i < cloud->points.size(); ++i)
     {
+      if ((max_pt.x - cloud_transformed->points[i].x) < x_range / 9) // head
+	{
+	  y_offset += cloud_transformed->points[i].y;
+	  ++index;
+	}
       cloud_transformed->points[i].x *= scale;
       cloud_transformed->points[i].y *= scale;
       cloud_transformed->points[i].z *= scale;
     }
 
+  y_offset = y_offset * scale / index;
   // translate
-  // get mean of x-axis and y-axis
-  pcl::PointXYZ centroid;
-  pcl::computeCentroid(*cloud_transformed, centroid);
+  // // get mean of x-axis and y-axis
+  // pcl::PointXYZ centroid;
+  // pcl::computeCentroid(*cloud_transformed, centroid);
   // move to origin
-  m << -centroid.x, -centroid.y, 0.0;
+  m << -x_middle * scale, -y_offset, 0.0;
   Transform(cloud_transformed, cloud_normalized, 0, m);
 }
 
@@ -405,10 +411,11 @@ ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) 
   src = source;  
   
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
-  icp.setMaxCorrespondenceDistance(0.5); // this param is very important!!!  
-  icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
-  icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
-  icp.setMaximumIterations(100); // if iteration smaller than threshold, converge 
+  icp.setMaxCorrespondenceDistance(0.8); // this param is very important!!!  
+  //icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
+  icp.setEuclideanFitnessEpsilon(0.001); // if sum of MSE smaller than threshold, converge
+  //icp.setMaximumIterations(100); // if iteration smaller than threshold, converge
+  //icp.setRANSACOutlierRejectionThreshold (distance);
   
   icp.setInputSource(src);  
   icp.setInputTarget(tgt);  
@@ -419,7 +426,7 @@ ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) 
   for (int i = 0; i < tgt->size(); i++)  
     output->push_back(tgt->points[i]); // merge two points 
   //cout << "After registration using ICP:" << output->size() << endl;
-  cout << icp.getFinalTransformation() << endl;
+  //cout << icp.getFinalTransformation() << endl;
 
   ICP_result result;
   result.conv = icp.hasConverged();
@@ -451,15 +458,15 @@ void BiCamera::ShowRviz()
      msg->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
    }
 
-  PC::Ptr cloud_transformed (new PC);
-  cloud_transformed->header.frame_id = "map";
-  Eigen::Matrix3d m(1,3);
-  m << 0.0, 0.0, 0.0;
-  Transform(msg, cloud_transformed, M_PI/4, m);
+  // PC::Ptr cloud_transformed (new PC);
+  // cloud_transformed->header.frame_id = "map";
+  // Eigen::Matrix3d m(1,3);
+  // m << 0.0, 0.0, 0.0;
+  // Transform(msg, cloud_transformed, M_PI/4, m);
 
   // PC::Ptr output(new PC);
   // output->header.frame_id = "map";
-  // MatchTwoPc(msg, trans, output);
+  // MatchTwoPc(msg, cloud_transformed, output);
 
   for (size_t i = 0; i < msg2->points.size (); ++i)
     {
@@ -479,28 +486,23 @@ void BiCamera::ShowRviz()
 void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans, float theta, Eigen::Matrix3d m)
 {
   Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
-
-  // Define a translation of 2.5 meters on the x axis.
   transform_2.translation() << m(0,0), m(0,1), m(0,2);
 
   // theta radians arround Z axis
   transform_2.rotate (Eigen::AngleAxisf (theta, Eigen::Vector3f::UnitZ()));
   
   // Print the transformation
-  printf ("using an Affine3f\n");
   //std::cout << transform_2.matrix() << std::endl;
 
   // Executing the transformation
   pcl::transformPointCloud (*cloud, *trans, transform_2);
-
-  cout << "original  " << theta / M_PI * 180 << endl;
 }
 
 void BiCamera::Run()
 {
   Mat left, disp;
   
-  // create filter_point which points to all template pointclouds
+  // create filter_pointer which points to all template pointclouds
   ProcessTemplate(); // preprocess template
   
   loop_rate = new ros::Rate(4);
