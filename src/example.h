@@ -42,7 +42,7 @@
 //#include "dbscan.h"
 
 #define K 10
-#define TEMPNUM 2 // define number of templates
+#define TEMPNUM 6 // define number of templates
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
@@ -53,7 +53,7 @@ using namespace cv;
 
 // just for test
 #define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 10 // number of test image
+#define TIM 7 // number of test image
 
 struct ICP_result
 {
@@ -78,6 +78,7 @@ public:
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point clouds, theta should be radian
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point clouds, e.g. rotate and scale
   void FitLine(PC::Ptr cloud);
+  void SetZero(PC::Ptr cloud);
   
   ~BiCamera();
 

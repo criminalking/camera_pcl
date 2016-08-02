@@ -138,7 +138,15 @@ void BiCamera::Init()
   img_data = new unsigned char[len];
 }
 
-void BiCamera::ProcessTemplate() //
+void BiCamera::SetZero(PC::Ptr cloud)
+{
+  for (int i = 0; i < cloud->points.size(); ++i)
+    {
+      cloud->points[i].z = 0;
+    }
+}
+
+void BiCamera::ProcessTemplate() 
 {
   char left_name[60];
   char disp_name[60];
@@ -154,19 +162,19 @@ void BiCamera::ProcessTemplate() //
       temp_cloud->points.resize(temp_cloud->width * temp_cloud->height);
 
       // read image
-      //sprintf(left_name, "img/template/left_%d.jpg", i + 1);
-      //sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
+      sprintf(left_name, "img/template/left_%d.jpg", i + 1);
+      sprintf(disp_name, "img/template/disp_%d.jpg", i + 1);
 
-      if (i == 0)
-      	{
-      	  sprintf(left_name, "img/template/left_%d.jpg", i + 3);
-      	  sprintf(disp_name, "img/template/disp_%d.jpg", i + 3);
-      	}
-      else
-      	{
-      	  sprintf(left_name, "img/test/left_%d.jpg", i + 9);
-      	  sprintf(disp_name, "img/test/disp_%d.jpg", i + 9);
-      	}
+      // if (i == 0)
+      // 	{
+      // 	  sprintf(left_name, "img/template/left_%d.jpg", i + 4);
+      // 	  sprintf(disp_name, "img/template/disp_%d.jpg", i + 4);
+      // 	}
+      // else
+      // 	{
+      // 	  sprintf(left_name, "img/test/left_%d.jpg", i + 8);
+      // 	  sprintf(disp_name, "img/test/disp_%d.jpg", i + 8);
+      // 	}
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
       
@@ -179,7 +187,8 @@ void BiCamera::ProcessTemplate() //
       PC::Ptr cloud_normalized (new PC);
       cloud_normalized->header.frame_id = "map";
       Normalize(cloud_filtered, cloud_normalized);
-      
+
+      SetZero(cloud_normalized);
       temp_cloud_ptr.push_back(cloud_normalized);
     }
   cout << "ProcessTemplate over.\n";
@@ -214,7 +223,8 @@ void BiCamera::ProcessTest(Mat& disp)
       // clock_t start, finish;
       // double totaltime;
       // start = clock();
-      
+
+      SetZero(cloud_normalized);
       ICP_result result = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
       
       // finish = clock();
@@ -350,7 +360,7 @@ void BiCamera::FilterPc(PC::Ptr cloud, PC::Ptr cloud_filtered)
 { 
   pcl::VoxelGrid<pcl::PointXYZ> vg;
   vg.setInputCloud (cloud);
-  vg.setLeafSize (1, 1, 1);
+  vg.setLeafSize (1.2, 1.2, 1.2);
   vg.filter (*cloud_filtered);
   cout << cloud->points.size() << "   " << cloud_filtered->points.size() << endl;
 }
@@ -365,7 +375,7 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   // float theta = atan (tan_theta); // degree
   // cout << "theta " << theta * 180 / M_PI << endl;
   
-  Eigen::Matrix3d m(1,3);
+  Eigen::Matrix3d m(1, 3);
   m << 0.0, 0.0, 0.0;
   PC::Ptr cloud_transformed (new PC);
   Transform(cloud, cloud_transformed, 0, m);
@@ -375,7 +385,6 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   pcl::getMinMax3D(*cloud_transformed, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
   float x_range = max_pt.x - min_pt.x; // range of x-axis
   float x_middle = x_range / 2 + min_pt.x;
-  cout << "x_range  " << x_range << endl;
   float scale = HEIGHT / x_range;
   float y_offset = 0.0;
   int index = 0;
@@ -411,9 +420,9 @@ ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) 
   src = source;  
   
   pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
-  icp.setMaxCorrespondenceDistance(0.8); // this param is very important!!!  
+  icp.setMaxCorrespondenceDistance(0.05); // this param is very important!!!  
   //icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
-  icp.setEuclideanFitnessEpsilon(0.001); // if sum of MSE smaller than threshold, converge
+  icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
   //icp.setMaximumIterations(100); // if iteration smaller than threshold, converge
   //icp.setRANSACOutlierRejectionThreshold (distance);
   
@@ -455,7 +464,7 @@ void BiCamera::ShowRviz()
    {
      msg->points[i].x = temp_cloud_ptr[RVIZ-1]->points[i].x / 255.0 * SCALE;
      msg->points[i].y = temp_cloud_ptr[RVIZ-1]->points[i].y / 255.0 * SCALE;
-     msg->points[i].z = temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
+     msg->points[i].z = 0;//temp_cloud_ptr[RVIZ-1]->points[i].z / 255.0 * SCALE;
    }
 
   // PC::Ptr cloud_transformed (new PC);
@@ -472,7 +481,7 @@ void BiCamera::ShowRviz()
     {
       msg2->points[i].x = temp_cloud_ptr[RVIZ-2]->points[i].x / 255.0 * SCALE;
       msg2->points[i].y = temp_cloud_ptr[RVIZ-2]->points[i].y / 255.0 * SCALE;
-      msg2->points[i].z = temp_cloud_ptr[RVIZ-2]->points[i].z / 255.0 * SCALE;
+      msg2->points[i].z = 0;//temp_cloud_ptr[RVIZ-2]->points[i].z / 255.0 * SCALE;
     }
 
   //FitLine(cloud_transformed); // some errors
