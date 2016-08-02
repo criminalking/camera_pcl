@@ -53,7 +53,7 @@ using namespace cv;
 
 // just for test
 #define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 7 // number of test image
+#define TIM 10 // number of test image
 
 struct ICP_result
 {

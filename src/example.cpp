@@ -109,11 +109,6 @@ void BiCamera::FitLine(PC::Ptr cloud)
   // print the coefficients of the plane
   for (int i = 0; i < 3; i++)
     cout << coefficients->values[i] << endl;
-  // double pa = coefficients->values[0];
-  // double pb = coefficients->values[1];
-  // double pc = coefficients->values[2];
-  // double pd = coefficients->values[3];
-  
 }
 
 void BiCamera::Init()
@@ -225,15 +220,16 @@ void BiCamera::ProcessTest(Mat& disp)
       // start = clock();
 
       SetZero(cloud_normalized);
-      ICP_result result = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+      ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+      ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
       
       // finish = clock();
       // totaltime = (double)(finish - start);
       // cout << "\n icp = " << totaltime / 1000.0 << "ms！" << endl;
       
-      if (result.conv == true && result.score <= min)
+      if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min)
 	{
-	  min = result.score;
+	  min = (result1.score + result2.score) / 2;
 	  min_index = i;
 	}
     }
