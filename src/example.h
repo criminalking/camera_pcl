@@ -1,3 +1,6 @@
+#ifndef EXAMPLE_H_
+#define EXAMPLE_H_
+
 #include <iostream>
 #include <stdio.h>
 #include <float.h>
@@ -32,6 +35,7 @@
 
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale
+#define MEDIAN 9
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
@@ -39,8 +43,8 @@ using namespace std;
 using namespace cv;
 
 // just for test
-#define RVIZ 2 // rviz show the RVIZ-th template
-#define TIM 9 // number of test image
+#define RVIZ 6 // rviz show the RVIZ-th template
+#define TIM 4 // number of test image
 
 class BiCamera
 {  
@@ -51,7 +55,7 @@ public:
     float score;
   };
 
-  BiCamera(): width(752), height(480), temp_num(6) {} 
+  BiCamera(): width(752), height(480), temp_num(6), cloud_copy0(new PC), cloud_copy(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -59,16 +63,17 @@ public:
   
   void ProcessTemplate(); // preprocess all template images
   void ProcessTest(Mat& disp); // only process one test image
-  void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane 
-  void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
+  void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane
+  void FitLine(PC::Ptr cloud); // fit a line of point clouds
+  void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, int down, int up); // convert depth-image to point clouds
   void GetPeople(PC::Ptr cloud); // get people and remove noises, e.g. celling, ground
-  void Filter(PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
+  void Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
+  void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
+  void Projection(PC::Ptr cloud, int flag = 3); // project to z-plane
+  void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
+  void GaussianFilter();
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz
-  void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
-  void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
-  void FitLine(PC::Ptr cloud); // fit a line of point clouds
-  void Projection(PC::Ptr cloud); // project to z-plane
 
 private:
   // for ros
@@ -88,5 +93,12 @@ private:
   //Mat left, disp;
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr;
+  vector < float > body_z_range;
+  float z_range_min, z_range_max;
+
+  PC::Ptr cloud_copy0;
+  PC::Ptr cloud_copy;
 
 };
+
+#endif // EXAMPLE_H_
