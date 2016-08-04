@@ -106,12 +106,12 @@ void BiCamera::Init()
   sel = CAM_STEREO_752X480_LD_30FPS;
   c = new movesense::MoveSenseCamera(sel);
 
-  // // if use camera
-  // if(!(movesense::MS_SUCCESS == c->OpenCamera()))
-  //   {
-  //     std::cout << "Open Camera Failed!" << std::endl;
-  //     std::exit(1);
-  //   }
+  // if use camera
+  if(!(movesense::MS_SUCCESS == c->OpenCamera()))
+    {
+      std::cout << "Open Camera Failed!" << std::endl;
+      std::exit(1);
+    }
 
   len  = width * height * 2;
   img_data = new unsigned char[len];
@@ -119,8 +119,10 @@ void BiCamera::Init()
 
 void BiCamera::Run()
 {
-  Mat left, disp;
+  //Mat left, disp;
   int num = 1;
+  char left_name[60];
+  char disp_name[60];
   
   // create filter_pointer which points to all template pointclouds
   ProcessTemplate(); // preprocess template
@@ -129,53 +131,51 @@ void BiCamera::Run()
 
   while (nh.ok())
     {
-      // // if use camera
-      // c->GetImageData(img_data, len);
-      // Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
-      // for(int i = 0 ; i < height; ++i)
-      // 	{
-      // 	  memcpy(left.data + width * i, img_data + (2 * i) * width, width);
-      // 	  memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
-      // 	}
+      // if use camera
+      c->GetImageData(img_data, len);
+      Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
+      for(int i = 0 ; i < height; ++i)
+      	{
+      	  memcpy(left.data + width * i, img_data + (2 * i) * width, width);
+      	  memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
+      	}
 
-      // imshow("left", left);
-      // imshow("disp", disp);
-
-      // compute time
-      clock_t start, finish;
-      double totaltime;
-      start = clock();
-  
-      char left_name[60];
-      char disp_name[60];
-      sprintf(left_name, "img/test/left_%d.jpg", TIM);
-      sprintf(disp_name, "img/test/disp_%d.jpg", TIM);
-      left = imread(left_name, 0);
-      disp = imread(disp_name, 0);
-      
-      ProcessTest(disp); // estimate test poses
-
-      ShowRviz();
-	
-      ros::spinOnce ();
-      loop_rate->sleep (); // private
-      
-      finish = clock();
-      totaltime = (double)(finish - start);
-      cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
+      imshow("left", left);
+      imshow("disp", disp);
 
       char key = waitKey(10);
       if(key == 'q') // quit
   	break;
-      // # if use camera
-      // else if (key == 's') // save
-      // 	{
-      // 	  sprintf(left_name, "left_%d.jpg", num);
-      // 	  sprintf(disp_name, "disp_%d.jpg", num);
-      // 	  ++num;
-      // 	  imwrite(left_name, left);
-      // 	  imwrite(disp_name, disp);
-      // 	}
+      // if use camera
+      else if (key == 's') // save
+      	{
+      	  sprintf(left_name, "left_%d.jpg", num);
+      	  sprintf(disp_name, "disp_%d.jpg", num);
+      	  ++num;
+      	  imwrite(left_name, left);
+      	  imwrite(disp_name, disp);
+
+	  // compute time
+	  clock_t start, finish;
+	  double totaltime;
+	  start = clock();
+  
+	  // sprintf(left_name, "img/test/left_%d.jpg", TIM);
+	  // sprintf(disp_name, "img/test/disp_%d.jpg", TIM);
+	  // left = imread(left_name, 0);
+	  // disp = imread(disp_name, 0);
+      
+	  ProcessTest(disp); // estimate test poses
+
+	  ShowRviz();
+            
+	  finish = clock();
+	  totaltime = (double)(finish - start);
+	  cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
+      	}
+      
+      ros::spinOnce ();
+      loop_rate->sleep (); // private
     }
 }
 
@@ -204,8 +204,6 @@ void BiCamera::ProcessTemplate()
       medianBlur(disp, disp, MEDIAN);
       
       DepthImageToPc(disp, cloud, 1000, 2000); // depth image convert to point clouds
-
-      if (i == 1) *cloud_copy0 = *cloud;
       
       PC::Ptr cloud_filtered(new PC);
       Filter(cloud, cloud_filtered); // filter point clouds
@@ -215,7 +213,8 @@ void BiCamera::ProcessTemplate()
       Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
 
       Projection(cloud_normalized); // project to z-plane
-      
+
+      if (i == 1) *cloud_copy0 = *cloud_normalized;
       
       temp_cloud_ptr.push_back(cloud_normalized); // save in vector
     }
@@ -233,9 +232,8 @@ void BiCamera::ProcessTest(Mat& disp)
   //use mid-filter for disp
   medianBlur(disp, disp, MEDIAN);
 
-  DepthImageToPc(disp, cloud, 1000, 2890); // depth image convert to point clouds
+  DepthImageToPc(disp, cloud, 1000, 3000); // depth image convert to point clouds
   
-  *cloud_copy = *cloud;
   PC::Ptr cloud_filtered(new PC);
   Filter(cloud, cloud_filtered); // filter point clouds
 
@@ -245,6 +243,8 @@ void BiCamera::ProcessTest(Mat& disp)
   Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
 
   Projection(cloud_normalized); // project to z-plane
+
+  *cloud_copy = *cloud_normalized;
   
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
@@ -273,9 +273,12 @@ void BiCamera::ProcessTest(Mat& disp)
 	  min_index = i;
 	}
     }
-  
-  // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
-  printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
+
+  if (min < 10)
+    // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
+    printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
+  else
+    printf("Sorry, no similiar images.");
   cout << "ProcessTest over.\n";
 }
 

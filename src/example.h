@@ -44,7 +44,7 @@ using namespace cv;
 
 // just for test
 #define RVIZ 6 // rviz show the RVIZ-th template
-#define TIM 4 // number of test image
+#define TIM 3 // number of test image
 
 class BiCamera
 {  
