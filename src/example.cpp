@@ -203,19 +203,19 @@ void BiCamera::ProcessTemplate()
       //use mid-filter for disp
       medianBlur(disp, disp, MEDIAN);
       
-      DepthImageToPc(disp, cloud, 1000, 2400); // depth image convert to point clouds
+      DepthImageToPc(disp, cloud, 1000, 2000); // depth image convert to point clouds
       
       PC::Ptr cloud_filtered(new PC);
       Filter(cloud, cloud_filtered); // filter point clouds
       GetPeople(cloud_filtered); // get people and remove noises, e.g. celling, ground
-
-      if (i == 0) *cloud_copy0 = *cloud_filtered;
-      if (i == 1) *cloud_copy = *cloud_filtered;
       
       PC::Ptr cloud_normalized(new PC);
       Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
 
       Projection(cloud_normalized); // project to z-plane
+      
+      if (i == 0) *cloud_copy0 = *cloud_normalized;
+      if (i == 1) *cloud_copy = *cloud_normalized;
       
       temp_cloud_ptr.push_back(cloud_normalized); // save in vector
     }

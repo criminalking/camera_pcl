@@ -55,7 +55,7 @@ public:
     float score;
   };
 
- BiCamera(): width(752), height(480), temp_num(8), temp_xy_num(5), cloud_copy0(new PC), cloud_copy(new PC) {} 
+ BiCamera(): width(752), height(480), temp_num(5), temp_xy_num(5), cloud_copy0(new PC), cloud_copy(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
