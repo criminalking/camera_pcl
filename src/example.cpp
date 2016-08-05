@@ -166,13 +166,13 @@ void BiCamera::Run()
 	  // disp = imread(disp_name, 0);
       
 	  ProcessTest(disp); // estimate test poses
-
-	  ShowRviz();
             
 	  finish = clock();
 	  totaltime = (double)(finish - start);
 	  cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
       	}
+
+      ShowRviz();
       
       ros::spinOnce ();
       loop_rate->sleep (); // private
@@ -203,18 +203,19 @@ void BiCamera::ProcessTemplate()
       //use mid-filter for disp
       medianBlur(disp, disp, MEDIAN);
       
-      DepthImageToPc(disp, cloud, 1000, 2000); // depth image convert to point clouds
+      DepthImageToPc(disp, cloud, 1000, 2400); // depth image convert to point clouds
       
       PC::Ptr cloud_filtered(new PC);
       Filter(cloud, cloud_filtered); // filter point clouds
       GetPeople(cloud_filtered); // get people and remove noises, e.g. celling, ground
+
+      if (i == 0) *cloud_copy0 = *cloud_filtered;
+      if (i == 1) *cloud_copy = *cloud_filtered;
       
       PC::Ptr cloud_normalized(new PC);
       Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
 
       Projection(cloud_normalized); // project to z-plane
-
-      if (i == 1) *cloud_copy0 = *cloud_normalized;
       
       temp_cloud_ptr.push_back(cloud_normalized); // save in vector
     }
@@ -242,35 +243,45 @@ void BiCamera::ProcessTest(Mat& disp)
   PC::Ptr cloud_normalized (new PC);
   Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
 
-  Projection(cloud_normalized); // project to z-plane
-
-  *cloud_copy = *cloud_normalized;
-  
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
   float z_range = max_pt.z - min_pt.z;
+
+  cout << "z_range: " << z_range << endl;
+
+  Projection(cloud_normalized); // project to z-plane
   
   // match two point clouds using ICP
   PC::Ptr output(new PC);
   float min = FLT_MAX;
   int min_index = 0;
-  for (int i = 0; i < temp_num; ++i)
+
+  if (z_range < 25) // x-y
     {
-      // clock_t start, finish;
-      // double totaltime;
-      // start = clock();
+      for (int i = 0; i < temp_xy_num; ++i)
+	{      
+	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
       
-      BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
-      BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
+	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min)
+	    {
+	      min = (result1.score + result2.score) / 2;
+	      min_index = i;
+	    }
+	}
+    }
+  else // x-y-z
+    {
+      for (int i = temp_xy_num; i < temp_num; ++i)
+	{      
+	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
       
-      // finish = clock();
-      // totaltime = (double)(finish - start);
-      // cout << "\n icp = " << totaltime / 1000.0 << "ms！" << endl;
-      
-      if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min)
-	{
-	  min = (result1.score + result2.score) / 2;
-	  min_index = i;
+	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min)
+	    {
+	      min = (result1.score + result2.score) / 2;
+	      min_index = i;
+	    }
 	}
     }
 
@@ -278,7 +289,7 @@ void BiCamera::ProcessTest(Mat& disp)
     // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
     printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
   else
-    printf("Sorry, no similiar images.");
+    printf("Sorry, no similiar images.\n");
   cout << "ProcessTest over.\n";
 }
 
@@ -348,6 +359,10 @@ void BiCamera::GetPeople(PC::Ptr cloud)
   float max_xrange = 0;
   int index = 0;
   int max_index = 0;
+
+  vector < float > x_range_vector;
+  vector < float > z_range_vector;
+  
   for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
   {
     PC::Ptr cloud_cluster (new PC);
@@ -361,24 +376,32 @@ void BiCamera::GetPeople(PC::Ptr cloud)
 
     // compute z-axis range of this cluster
     float x_range = max_pt.x - min_pt.x;
-    if (x_range >= max_xrange)
-      {
- 	// *cloud = *cloud_cluster; // if here, some strange situations exist.(some strange noises)
-     	max_xrange = x_range;
-     	max_index = index;
-      }
-    ++index;
+    float z_range = max_pt.z - min_pt.z;
+    x_range_vector.push_back(x_range);
+    z_range_vector.push_back(z_range);
+    
+    // if (x_range >= max_xrange)
+    //   {
+    // 	// *cloud = *cloud_cluster; // if here, some strange situations exist.(some strange noises)
+    //  	max_xrange = x_range;
+    //  	max_index = index;
+    //   }
+    // ++index;
 
     //cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << endl;
   }
 
-  // assign minimum z-range cluster to cloud
-  index = 0;
+  auto biggest = max_element(begin(x_range_vector), end(x_range_vector));
+  max_index = distance(begin(x_range_vector), biggest);
+
+  cout << "z_range = " << z_range_vector[max_index] << endl;
+  body_z_range.push_back(z_range_vector[max_index]);
+
+  // assign maximum x-range cluster to cloud
   for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
   {
     if (index == max_index)
       {
-	body_z_range.push_back(max_xrange);
   	PC::Ptr cloud_cluster (new PC);
   	for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
   	  {
@@ -474,11 +497,6 @@ void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans, float theta, Eigen::Matri
 
   // Executing the transformation
   pcl::transformPointCloud (*cloud, *trans, transform_2);
-}
-
-void BiCamera::GaussianFilter()
-{
-
 }
 
 BiCamera::ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP

@@ -55,7 +55,7 @@ public:
     float score;
   };
 
-  BiCamera(): width(752), height(480), temp_num(6), cloud_copy0(new PC), cloud_copy(new PC) {} 
+ BiCamera(): width(752), height(480), temp_num(8), temp_xy_num(5), cloud_copy0(new PC), cloud_copy(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -71,7 +71,6 @@ public:
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
   void Projection(PC::Ptr cloud, int flag = 3); // project to z-plane
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
-  void GaussianFilter();
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz
 
@@ -90,11 +89,11 @@ private:
   int len;
   unsigned char *img_data;
   int temp_num; // number of template
+  int temp_xy_num; // number of templates in x-y plane
   //Mat left, disp;
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr;
   vector < float > body_z_range;
-  float z_range_min, z_range_max;
 
   PC::Ptr cloud_copy0;
   PC::Ptr cloud_copy;
