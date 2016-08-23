@@ -178,7 +178,7 @@ void BiCamera::ProcessTemplate()
 
       medianBlur(disp, disp, MEDIAN); // median filtering
 
-      Rect human_face = FaceRecognition(left); // search for human face      
+      Rect human_face = search_face.Haar(left); // search for human face      
       
       DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
       
@@ -211,7 +211,7 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
 
   medianBlur(disp, disp, MEDIAN); // median filtering
 
-  Rect human_face = FaceRecognition(left); // search for human face
+  Rect human_face = search_face.Haar(left); // search for human face      
 
   DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
   
@@ -270,32 +270,6 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
   else
     printf("Sorry, no similiar images.\n");
   cout << "ProcessTest over.\n";
-}
-
-
-Rect BiCamera::FaceRecognition(Mat& img)
-{
-  equalizeHist(img, img);
-  CascadeClassifier faces_cascade;
-  faces_cascade.load("frontalface.xml");
-  vector<Rect> faces;
-  faces_cascade.detectMultiScale(img, faces);
-  cout << "faces.size(): " << faces.size() << endl;
-  if (faces.size() != 0)
-    {
-      Rect roi = faces[faces.size() - 1];
-      rectangle(img, roi, Scalar(0,0,255));
-      
-      char left_name[60];
-      char disp_name[60];
-      sprintf(left_name, "%d.jpg", face_num);
-      ++face_num;
-      imwrite(left_name, img);
-      
-      return roi;
-    }
-  else
-    cout << "Find no face." << endl;
 }
 
 

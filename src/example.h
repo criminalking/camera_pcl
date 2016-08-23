@@ -8,7 +8,7 @@
 #include <fstream>
 #include <time.h>
 #include <ros/ros.h>
-#include "MoveSenseCamera.h"
+
 // PCL includes
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl/point_types.h>
@@ -33,6 +33,10 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
+// my other codes
+#include "MoveSenseCamera.h"
+#include "FaceRecognition.h"
+
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale
 #define MEDIAN 9 // size of kernel (median filtering)
@@ -51,7 +55,7 @@ public:
     float score;
   };
 
- BiCamera(): face_num(1), width(752), height(480), temp_num(5), temp_xy_num(5), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
+ BiCamera(): width(752), height(480), temp_num(5), temp_xy_num(5), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -71,6 +75,8 @@ public:
   void ShowRviz(); // show in rviz
 
 private:
+  Face search_face; // search human face
+  
   // for ros
   ros::NodeHandle nh;
   ros::Publisher pub;
@@ -94,9 +100,6 @@ private:
   // show rviz
   PC::Ptr cloud_rviz_1;
   PC::Ptr cloud_rviz_2;
-
-  // store face images
-  int face_num;
 };
 
 bool operator==(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
