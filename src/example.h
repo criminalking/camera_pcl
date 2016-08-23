@@ -35,16 +35,12 @@
 
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale
-#define MEDIAN 9
+#define MEDIAN 9 // size of kernel (median filtering)
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 using namespace std;
 using namespace cv;
-
-// just for test
-#define RVIZ 6 // rviz show the RVIZ-th template
-#define TIM 3 // number of test image
 
 class BiCamera
 {  
@@ -55,18 +51,18 @@ public:
     float score;
   };
 
- BiCamera(): width(752), height(480), temp_num(5), temp_xy_num(5), cloud_copy0(new PC), cloud_copy(new PC) {} 
+ BiCamera(): face_num(1), width(752), height(480), temp_num(5), temp_xy_num(5), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
   void Run(); // get a frame and process
   
   void ProcessTemplate(); // preprocess all template images
-  void ProcessTest(Mat& disp); // only process one test image
+  void ProcessTest(Mat& left, Mat& disp); // only process one test image
   void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane
-  void FitLine(PC::Ptr cloud); // fit a line of point clouds
-  void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, int down, int up); // convert depth-image to point clouds
-  void GetPeople(PC::Ptr cloud); // get people and remove noises, e.g. celling, ground
+  Rect FaceRecognition(Mat& img); // recognize human faces
+  void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
+  void GetPeople(PC::Ptr cloud); //  get people cluster
   void Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
   void Projection(PC::Ptr cloud, int flag = 3); // project to z-plane
@@ -88,16 +84,33 @@ private:
   int height;
   int len;
   unsigned char *img_data;
-  int temp_num; // number of template
+  int temp_num; // number of templates
   int temp_xy_num; // number of templates in x-y plane
-  //Mat left, disp;
 
-  vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr;
-  vector < float > body_z_range;
+  vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr; // store template point clouds
 
-  PC::Ptr cloud_copy0;
-  PC::Ptr cloud_copy;
+  pcl::PointXYZ mid_point; // store midpoint of the face
 
+  // show rviz
+  PC::Ptr cloud_rviz_1;
+  PC::Ptr cloud_rviz_2;
+
+  // store face images
+  int face_num;
 };
+
+bool operator==(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
+{
+  if (abs(pt2.x - pt.x) < 50 && abs(pt2.y - pt.y) < 50 && abs(pt2.z - pt.z) < 5)
+    return true;
+  else return false;
+}
+
+void operator/=(pcl::PointXYZ& pt, double num)
+{
+  pt.x = pt.x / num;
+  pt.y = pt.y / num;
+  pt.z = pt.z / num;
+}
 
 #endif // EXAMPLE_H_

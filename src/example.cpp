@@ -1,7 +1,5 @@
 #include "example.h"
 
-// FIXME: add const
-// FIXME: many params have contacts, such as SCALE and HEIGHT
 
 BiCamera::~BiCamera()
 {
@@ -9,6 +7,7 @@ BiCamera::~BiCamera()
   delete loop_rate;
   delete[] img_data;
 }
+
 
 void BiCamera::FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud) // need K
 {
@@ -74,27 +73,6 @@ void BiCamera::FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud) // need K
     }
 }
 
-void BiCamera::FitLine(PC::Ptr cloud) // exist some errors
-{
-  const float kDistanceThreshold = 0.01;
-  // fitting a line(use point clouds)
-  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-  pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-  // Create the segmentation object
-  pcl::SACSegmentation<pcl::PointXYZ> seg;
-  // Optional
-  seg.setOptimizeCoefficients (true);
-  // Mandatory
-  seg.setModelType (pcl::SACMODEL_LINE);
-  seg.setMethodType (pcl::SAC_RANSAC);
-  seg.setDistanceThreshold (kDistanceThreshold);  
-  seg.setInputCloud (cloud);
-  seg.segment (*inliers, *coefficients);
-
-  // print the coefficients of the line
-  for (int i = 0; i < 3; ++i)
-    cout << coefficients->values[i] << endl;
-}
 
 void BiCamera::Init()
 {
@@ -116,6 +94,7 @@ void BiCamera::Init()
   len  = width * height * 2;
   img_data = new unsigned char[len];
 }
+
 
 void BiCamera::Run()
 {
@@ -155,21 +134,16 @@ void BiCamera::Run()
       	  imwrite(left_name, left);
       	  imwrite(disp_name, disp);
 
-	  // compute time
-	  clock_t start, finish;
-	  double totaltime;
-	  start = clock();
+  	  // compute time
+  	  clock_t start, finish;
+  	  double totaltime;
+  	  start = clock();
   
-	  // sprintf(left_name, "img/test/left_%d.jpg", TIM);
-	  // sprintf(disp_name, "img/test/disp_%d.jpg", TIM);
-	  // left = imread(left_name, 0);
-	  // disp = imread(disp_name, 0);
-      
-	  ProcessTest(disp); // estimate test poses
+  	  ProcessTest(left, disp); // estimate test poses
             
-	  finish = clock();
-	  totaltime = (double)(finish - start);
-	  cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
+  	  finish = clock();
+  	  totaltime = (double)(finish - start);
+  	  cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
       	}
 
       ShowRviz();
@@ -179,6 +153,7 @@ void BiCamera::Run()
     }
 }
 
+
 void BiCamera::ProcessTemplate() 
 {
   char left_name[60];
@@ -186,6 +161,7 @@ void BiCamera::ProcessTemplate()
   Mat left, disp;
   for (int i = 0; i < temp_num; ++i)
     {
+      cout << i << endl;
       // create temperary point clouds storaging data
       PC::Ptr cloud(new PC);
       cloud->height = height;
@@ -200,29 +176,32 @@ void BiCamera::ProcessTemplate()
       left = imread(left_name, 0);
       disp = imread(disp_name, 0);
 
-      //use mid-filter for disp
-      medianBlur(disp, disp, MEDIAN);
+      medianBlur(disp, disp, MEDIAN); // median filtering
+
+      Rect human_face = FaceRecognition(left); // search for human face      
       
-      DepthImageToPc(disp, cloud, 1000, 2000); // depth image convert to point clouds
+      DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
       
       PC::Ptr cloud_filtered(new PC);
       Filter(cloud, cloud_filtered); // filter point clouds
-      GetPeople(cloud_filtered); // get people and remove noises, e.g. celling, ground
+      
+      GetPeople(cloud_filtered); // get people cluster
+
+      if (i == 2) *cloud_rviz_1 = *cloud_filtered;
+      if (i == 4) *cloud_rviz_2 = *cloud_filtered;
       
       PC::Ptr cloud_normalized(new PC);
-      Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
-
+      Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
+      
       Projection(cloud_normalized); // project to z-plane
       
-      if (i == 0) *cloud_copy0 = *cloud_normalized;
-      if (i == 1) *cloud_copy = *cloud_normalized;
-      
-      temp_cloud_ptr.push_back(cloud_normalized); // save in vector
+      temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
     }
   cout << "ProcessTemplate over.\n";
 }
 
-void BiCamera::ProcessTest(Mat& disp) 
+
+void BiCamera::ProcessTest(Mat& left, Mat& disp) 
 {
   PC::Ptr cloud(new PC);
   cloud->height = height;
@@ -230,70 +209,97 @@ void BiCamera::ProcessTest(Mat& disp)
   cloud->is_dense = false;
   cloud->points.resize(cloud->width * cloud->height);
 
-  //use mid-filter for disp
-  medianBlur(disp, disp, MEDIAN);
+  medianBlur(disp, disp, MEDIAN); // median filtering
 
-  DepthImageToPc(disp, cloud, 1000, 3000); // depth image convert to point clouds
+  Rect human_face = FaceRecognition(left); // search for human face
+
+  DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
   
   PC::Ptr cloud_filtered(new PC);
   Filter(cloud, cloud_filtered); // filter point clouds
 
-  GetPeople(cloud_filtered); // get people and remove noises, e.g. celling, ground
+  GetPeople(cloud_filtered); // get people cluster
   
   PC::Ptr cloud_normalized (new PC);
-  Normalize(cloud_filtered, cloud_normalized); // rotate, translate and scale point clouds
+  Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
 
+  // compute the distance from face to the frontest part of the human body
   pcl::PointXYZ min_pt, max_pt;
-  pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
-  float z_range = max_pt.z - min_pt.z;
-
+  pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
+  float z_range = mid_point.z - min_pt.z;
   cout << "z_range: " << z_range << endl;
 
   Projection(cloud_normalized); // project to z-plane
   
   // match two point clouds using ICP
   PC::Ptr output(new PC);
-  float min = FLT_MAX;
+  float min_value = FLT_MAX;
   int min_index = 0;
 
-  if (z_range < 25) // x-y
+  if (z_range < 20) // pose in x-y plane
     {
       for (int i = 0; i < temp_xy_num; ++i)
-	{      
-	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
-	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
+  	{      
+  	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+  	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
       
-	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min)
-	    {
-	      min = (result1.score + result2.score) / 2;
-	      min_index = i;
-	    }
-	}
+  	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min_value)
+  	    {
+  	      min_value = (result1.score + result2.score) / 2;
+  	      min_index = i;
+  	    }
+  	}
     }
-  else // x-y-z
+  else // pose in x-y-z space
     {
       for (int i = temp_xy_num; i < temp_num; ++i)
-	{      
-	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
-	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
+  	{      
+  	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+  	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
       
-	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min)
-	    {
-	      min = (result1.score + result2.score) / 2;
-	      min_index = i;
-	    }
-	}
+  	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min_value)
+  	    {
+  	      min_value = (result1.score + result2.score) / 2;
+  	      min_index = i;
+  	    }
+  	}
     }
 
-  if (min < 10)
-    // ROS_WARN("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
-    printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min);
+  if (min_value < 10)
+    printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min_value);
   else
     printf("Sorry, no similiar images.\n");
   cout << "ProcessTest over.\n";
 }
 
-void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, int down, int up) 
+
+Rect BiCamera::FaceRecognition(Mat& img)
+{
+  equalizeHist(img, img);
+  CascadeClassifier faces_cascade;
+  faces_cascade.load("frontalface.xml");
+  vector<Rect> faces;
+  faces_cascade.detectMultiScale(img, faces);
+  cout << "faces.size(): " << faces.size() << endl;
+  if (faces.size() != 0)
+    {
+      Rect roi = faces[faces.size() - 1];
+      rectangle(img, roi, Scalar(0,0,255));
+      
+      char left_name[60];
+      char disp_name[60];
+      sprintf(left_name, "%d.jpg", face_num);
+      ++face_num;
+      imwrite(left_name, img);
+      
+      return roi;
+    }
+  else
+    cout << "Find no face." << endl;
+}
+
+
+void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face) 
 {
   // camera params
   const double kBMultipyF = 35981.122607;  // kBMultipyF = b*f
@@ -306,36 +312,53 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, int down, int up)
   double z = 0.00;
   double d_real = 0.0;
 
+  // get the midpoint of the human face
+  int u = face.x + face.width / 2;
+  int v = face.y + face.height / 2;
+  int d = img.at<uchar>(u, v) + 1.0; // avoid zero
+  if(d < 128)
+    d_real = d / 4.0;
+  else
+    d_real = (d * 2 - 128) / 4.0;
+  mid_point.z = kBMultipyF / d_real;
+  mid_point.x = (u - kCu) * mid_point.z / kF;
+  mid_point.y = (v - kCv) * mid_point.z / kF;
+  
+  // convert depth image to point cloud (z-value has constraint)
   int index = 0;
-  // just select neutral part of the image
   for (int u = 0; u < height; ++u)
     for (int v = 0; v < width; ++v)
       {
-	int d = img.at<uchar>(u,v) + 1.0; // avoid zero
-	if(d < 128)
-	  d_real = d / 4.0;
-	else
-	  d_real = (d * 2 - 128) / 4.0;
+  	int d = img.at<uchar>(u,v) + 1.0; // avoid zero
+  	if(d < 128)
+  	  d_real = d / 4.0;
+  	else
+  	  d_real = (d * 2 - 128) / 4.0;
 
-	// compute (x, y, z)
-	z = kBMultipyF / d_real;
-	x = (u - kCu) * z / kF;
-	y = (v - kCv) * z / kF;
+  	// compute (x, y, z)
+  	z = kBMultipyF / d_real;
+  	x = (u - kCu) * z / kF;
+  	y = (v - kCv) * z / kF;
 
-	// storage data to cloud
-	if (z > down && z < up) // constraint z-axis
-	  {
-	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
-	    cloud->points[index].y = y / SCALE;
-	    cloud->points[index].z = z / SCALE;
-	    ++index;
-	 }
+  	// store data to cloud
+  	if (z > 1000 && z < mid_point.z + 30) // constraint z-value
+  	  {
+  	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
+  	    cloud->points[index].y = y / SCALE;
+  	    cloud->points[index].z = z / SCALE;
+  	    ++index;
+  	 }
       }
   cloud->points.resize(index); // remove no-data points
+
+  mid_point /= SCALE;
+  cout << "mid_point" << mid_point << endl;
 }
+
 
 void BiCamera::GetPeople(PC::Ptr cloud)
 {
+  cout << cloud->points.size() << endl;
   const float kClusterTolerance = 5.0;
   const int kMinClusterSize = 1000;
   const int kMaxClusterSize = 20000;
@@ -353,69 +376,39 @@ void BiCamera::GetPeople(PC::Ptr cloud)
   ec.setInputCloud(cloud);
   ec.extract(cluster_indices);
 
-  //cout << "There are " << cluster_indices.size() << "clusters." << endl;
+  bool flag;
+  int num = 0;
 
-  // find cluster which has maximum x-range 
-  float max_xrange = 0;
-  int index = 0;
-  int max_index = 0;
-
-  vector < float > x_range_vector;
-  vector < float > z_range_vector;
-  
-  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
-  {
-    PC::Ptr cloud_cluster (new PC);
-    for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
-      {
-	cloud_cluster->points.push_back (cloud->points[*pit]);
-      }
-
-    pcl::PointXYZ min_pt, max_pt;
-    pcl::getMinMax3D(*cloud_cluster, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
-
-    // compute z-axis range of this cluster
-    float x_range = max_pt.x - min_pt.x;
-    float z_range = max_pt.z - min_pt.z;
-    x_range_vector.push_back(x_range);
-    z_range_vector.push_back(z_range);
-    
-    // if (x_range >= max_xrange)
-    //   {
-    // 	// *cloud = *cloud_cluster; // if here, some strange situations exist.(some strange noises)
-    //  	max_xrange = x_range;
-    //  	max_index = index;
-    //   }
-    // ++index;
-
-    //cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << endl;
-  }
-
-  auto biggest = max_element(begin(x_range_vector), end(x_range_vector));
-  max_index = distance(begin(x_range_vector), biggest);
-
-  cout << "z_range = " << z_range_vector[max_index] << endl;
-  body_z_range.push_back(z_range_vector[max_index]);
-
-  // assign maximum x-range cluster to cloud
-  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
-  {
-    if (index == max_index)
-      {
-  	PC::Ptr cloud_cluster (new PC);
-  	for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
-  	  {
-  	    cloud_cluster->points.push_back (cloud->points[*pit]);
-  	  }        
-  	cloud_cluster->width = cloud_cluster->points.size ();
-  	cloud_cluster->height = 1;
-  	cloud_cluster->is_dense = true;
-  	*cloud = *cloud_cluster;
-  	break;
-      }
-    else ++index;
-  }
+  if (cluster_indices.size() == 0)
+    cout << "No people cluster.\n";
+  else
+    { 
+      for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
+  	{
+  	  PC::Ptr cloud_cluster (new PC);
+  	  flag = false;
+  	  for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
+  	    {
+  	      cloud_cluster->points.push_back(cloud->points[*pit]);
+  	      if (cloud->points[*pit] == mid_point) // the mid_point maybe be filtered
+		{
+		  flag = true; // this cluster contains the midpoint
+		  ++num;
+		}
+  	    }
+  	  if (flag == true && num > 50)
+  	    {
+  	      cloud_cluster->width = cloud_cluster->points.size();
+  	      cloud_cluster->height = 1;
+  	      cloud_cluster->is_dense = true;
+  	      *cloud = *cloud_cluster;
+	      break;
+  	    }
+  	}
+      if (flag == false) cout << "No people cluster.\n"; // midpoint is not in valid clusters
+    }
 }
+
 
 void BiCamera::Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered)
 {
@@ -427,10 +420,11 @@ void BiCamera::Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered)
   cout << cloud->points.size() << "   " << cloud_filtered->points.size() << endl;
 }
 
+
 void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
 {
   const float kHeadScale = 9;
-  // first rotate using PCA
+  // first: rotate using PCA
   // pcl::PCA<pcl::PointXYZ> pca(*cloud);
   // Eigen::Matrix3f eigen_vector = pca.getEigenVectors();
   // cout << endl << eigen_vector << endl;
@@ -443,7 +437,7 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   PC::Ptr cloud_transformed (new PC);
   Transform(cloud, cloud_transformed, 0, m);
 
-  // second scale
+  // second: scale
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud_transformed, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
   float x_range = max_pt.x - min_pt.x; // range of x-axis
@@ -456,20 +450,22 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   for (int i = 0; i < cloud->points.size(); ++i)
     {
       if ((max_pt.x - cloud_transformed->points[i].x) < x_range / kHeadScale) // head
-	{
-	  y_offset += cloud_transformed->points[i].y;
-	  ++index;
-	}
+  	{
+  	  y_offset += cloud_transformed->points[i].y;
+  	  ++index;
+  	}
       cloud_transformed->points[i].x *= scale;
       cloud_transformed->points[i].y *= scale;
       cloud_transformed->points[i].z *= scale;
     }
 
   y_offset = y_offset * scale / index;
-  // third translate
+  
+  // third: translate
   m << -x_middle * scale, -y_offset, 0.0;
   Transform(cloud_transformed, cloud_normalized, 0, m);
 }
+
 
 void BiCamera::Projection(PC::Ptr cloud, int flag)
 {
@@ -484,20 +480,17 @@ void BiCamera::Projection(PC::Ptr cloud, int flag)
       cloud->points[i].z = 0;   
 }
 
+
 void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans, float theta, Eigen::Matrix3d m)
 {
   Eigen::Affine3f transform_2 = Eigen::Affine3f::Identity();
   transform_2.translation() << m(0,0), m(0,1), m(0,2);
-
   // theta radians arround Z axis
-  transform_2.rotate (Eigen::AngleAxisf (theta, Eigen::Vector3f::UnitZ()));
-  
-  // Print the transformation
-  //std::cout << transform_2.matrix() << std::endl;
-
+  transform_2.rotate (Eigen::AngleAxisf(theta, Eigen::Vector3f::UnitZ()));
   // Executing the transformation
   pcl::transformPointCloud (*cloud, *trans, transform_2);
 }
+
 
 BiCamera::ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
 {
@@ -524,48 +517,36 @@ BiCamera::ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Pt
   return result;
 }
 
+
 void BiCamera::ShowRviz()
 {
   PC::Ptr msg (new PC);
   PC::Ptr msg2 (new PC);
 
   msg->header.frame_id = "map";
-  msg->height = cloud_copy0->points.size();
+  msg->height = cloud_rviz_1->points.size();
   msg->width = 1;
   msg->is_dense = true;
-  msg->points.resize(cloud_copy0->points.size()); // necessary
+  msg->points.resize(cloud_rviz_1->points.size()); // necessary
 
   msg2->header.frame_id = "map";
-  msg2->height = cloud_copy->points.size();
+  msg2->height = cloud_rviz_2->points.size();
   msg2->width = 1;
   msg2->is_dense = true;
-  msg2->points.resize(cloud_copy->points.size());
+  msg2->points.resize(cloud_rviz_2->points.size());
       
   for (size_t i = 0; i < msg->points.size (); ++i)
    {
-     msg->points[i].x = cloud_copy0->points[i].x / 255.0 * SCALE;
-     msg->points[i].y = cloud_copy0->points[i].y / 255.0 * SCALE;
-     msg->points[i].z = cloud_copy0->points[i].z / 255.0 * SCALE;
+     msg->points[i].x = cloud_rviz_1->points[i].x / 255.0 * SCALE;
+     msg->points[i].y = cloud_rviz_1->points[i].y / 255.0 * SCALE;
+     msg->points[i].z = cloud_rviz_1->points[i].z / 255.0 * SCALE;
    }
-
-  // PC::Ptr cloud_transformed (new PC);
-  // cloud_transformed->header.frame_id = "map";
-  // Eigen::Matrix3d m(1,3);
-  // m << 2.0, 0.0, 0.0;
-  // Transform(msg, cloud_transformed, M_PI/4, m);
-
-  // PC::Ptr output(new PC);
-  // output->header.frame_id = "map";
-  // BiCamera::ICP_result a = MatchTwoPc(msg, cloud_transformed, output);
-  // cout << a.score << endl;
-  // a = MatchTwoPc(cloud_transformed, msg, output);
-  // cout << a.score << endl;
 
   for (size_t i = 0; i < msg2->points.size (); ++i)
     {
-      msg2->points[i].x = cloud_copy->points[i].x / 255.0 * SCALE;
-      msg2->points[i].y = cloud_copy->points[i].y / 255.0 * SCALE;
-      msg2->points[i].z = cloud_copy->points[i].z / 255.0 * SCALE;
+      msg2->points[i].x = cloud_rviz_2->points[i].x / 255.0 * SCALE;
+      msg2->points[i].y = cloud_rviz_2->points[i].y / 255.0 * SCALE;
+      msg2->points[i].z = cloud_rviz_2->points[i].z / 255.0 * SCALE;
     }
       
   pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
@@ -573,6 +554,7 @@ void BiCamera::ShowRviz()
   pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
   pub2.publish (msg2);
 }
+
 
 int main (int argc, char** argv)
 {
