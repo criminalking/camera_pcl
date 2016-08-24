@@ -38,6 +38,9 @@
 #include "FaceRecognition.h"
 #include "ProcessImage.h"
 
+using namespace std;
+using namespace cv;
+
 #define TEMPLATE true
 #define TEST false
 
@@ -46,9 +49,6 @@
 #define MEDIAN 9 // size of kernel (median filtering)
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
-
-using namespace std;
-using namespace cv;
 
 class BiCamera
 {  
@@ -78,6 +78,7 @@ public:
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz
+  bool Equal(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2); // compare two PointXYZ
 
 private:
   Face search_face; // search human face
@@ -106,13 +107,6 @@ private:
   PC::Ptr cloud_rviz_1;
   PC::Ptr cloud_rviz_2;
 };
-
-bool operator==(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
-{
-  if (abs(pt2.x - pt.x) < 5 && abs(pt2.y - pt.y) < 5 && abs(pt2.z - pt.z) < 5)
-    return true;
-  else return false;
-}
 
 void operator/=(pcl::PointXYZ& pt, double num)
 {

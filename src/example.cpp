@@ -116,10 +116,10 @@ void BiCamera::Run()
   	  start = clock();
 
 	  // read image
+	  if (num > 9) break;
           process_image.GetImage(left, disp, num, TEST);
 	  ProcessTest(left, disp); // estimate test poses
 	  ++num;
-	  if (num > 13) break;
             
   	  finish = clock();
   	  totaltime = (double)(finish - start);
@@ -166,8 +166,14 @@ void BiCamera::ProcessTemplate()
       
       PC::Ptr cloud_normalized(new PC);
       Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
-      
-      Projection(cloud_normalized); // project to z-plane
+
+      if (z_range < 20)
+	Projection(cloud_normalized); // project to xy-plane
+      else
+	Projection(cloud_normalized, 1); // project to yz-plane
+
+      if (i == 6) *cloud_rviz_1 = *cloud_normalized;
+      if (i == 7) *cloud_rviz_2 = *cloud_normalized;
       
       temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
     }
@@ -188,9 +194,6 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
   Rect human_face = search_face.Haar(left); // search for human face      
 
   DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
-
-  *cloud_rviz_1 = *cloud;
-  *cloud_rviz_2 = *cloud;
   
   PC::Ptr cloud_filtered(new PC);
   Filter(cloud, cloud_filtered); // filter point clouds
@@ -213,7 +216,7 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
 
   if (z_range < 20) // pose in x-y plane
     {
-      Projection(cloud_normalized); // project to z-plane
+      Projection(cloud_normalized); // project to xy-plane
       for (int i = 0; i < temp_xy_num; ++i)
   	{      
   	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
@@ -228,6 +231,7 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
     }
   else // pose in x-y-z space
     {
+      Projection(cloud_normalized, 1); // project to yz-plane
       for (int i = temp_xy_num; i < temp_num; ++i)
   	{      
   	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
@@ -320,7 +324,6 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
 
 void BiCamera::GetPeople(PC::Ptr cloud)
 {
-  cout << cloud->points.size() << endl;
   const float kClusterTolerance = 5.0;
   const int kMinClusterSize = 1000;
   const int kMaxClusterSize = 20000;
@@ -352,7 +355,7 @@ void BiCamera::GetPeople(PC::Ptr cloud)
   	  for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
   	    {
   	      cloud_cluster->points.push_back(cloud->points[*pit]);
-  	      if (cloud->points[*pit] == mid_point) // the mid_point maybe be filtered
+  	      if (Equal(cloud->points[*pit], mid_point) == true) // the mid_point maybe be filtered
 		{
 		  flag = true; // this cluster contains the midpoint
 		  ++num;
@@ -515,6 +518,14 @@ void BiCamera::ShowRviz()
   pub.publish (msg);     
   pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
   pub2.publish (msg2);
+}
+
+
+bool BiCamera::Equal(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
+{
+  if (abs(pt2.x - pt.x) < 5 && abs(pt2.y - pt.y) < 5 && abs(pt2.z - pt.z) < 5)
+    return true;
+  else return false;
 }
 
 

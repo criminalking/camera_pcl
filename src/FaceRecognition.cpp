@@ -6,7 +6,7 @@ Rect Face::Haar(Mat& img)
   CascadeClassifier faces_cascade;
   faces_cascade.load("frontalface.xml");
   vector<Rect> faces;
-  faces_cascade.detectMultiScale(img, faces, 1.1, 3, 0|CV_HAAR_SCALE_IMAGE, Size(32, 32)); // 1.1 ScaleFactor, 3 minNeighbours
+  faces_cascade.detectMultiScale(img, faces, 1.1, 3, 0|CV_HAAR_SCALE_IMAGE, Size(34, 34)); // 1.1 ScaleFactor, 3 minNeighbours
   cout << "faces.size(): " << faces.size() << endl;
   if (faces.size() != 0)
     {
@@ -23,4 +23,23 @@ Rect Face::Haar(Mat& img)
     }
   else
     cout << "Find no face." << endl;
+}
+
+
+void Face::Dlib(Mat& img)
+{
+  frontal_face_detector detector = get_frontal_face_detector();
+  image_window win;
+
+  array2d<unsigned char> img;
+  pyramid_up(img);
+
+  // Now tell the face detector to give us a list of bounding boxes around all the faces it can find in the image.
+  std::vector<rectangle> dets = detector(img);
+
+  cout << "Number of faces detected: " << dets.size() << endl;
+  // Now we show the image on the screen and the face detections as red overlay boxes.
+  win.clear_overlay();
+  win.set_image(img);
+  win.add_overlay(dets, rgb_pixel(255,0,0));
 }

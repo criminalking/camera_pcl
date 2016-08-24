@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.4.6)
 include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+include(/home/criminalking/Softwares/dlib/dlib/cmake)
 
 # Set the build type.  Options are:
 #  Coverage       : w/ debug symbols, w/o optimization, w/ code-coverage
@@ -48,7 +49,7 @@ add_library(FaceRecognition src/FaceRecognition.cpp)
 add_library(ProcessImage src/ProcessImage.cpp)
 
 rosbuild_add_executable(example src/example.cpp)
-target_link_libraries(  example  VL4IF CameraCtrl Camera MoveSenseCamera FaceRecognition ProcessImage ${OpenCV_LIBS} )
+target_link_libraries(  example  VL4IF CameraCtrl Camera MoveSenseCamera FaceRecognition ProcessImage ${OpenCV_LIBS} dlib)
 INCLUDE_DIRECTORIES(  ${OPENCV_INCLUDE_DIR} )
 
 #for boost
