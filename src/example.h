@@ -36,6 +36,7 @@
 // my other codes
 #include "MoveSenseCamera.h"
 #include "FaceRecognition.h"
+#include "ProcessImage.h"
 
 #define TEMPLATE true
 #define TEST false
@@ -58,19 +59,17 @@ public:
     float score;
   };
 
- BiCamera(): width(752), height(480), temp_num(5), temp_xy_num(5), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
+ BiCamera(): width(752), height(480), temp_num(9), temp_xy_num(6), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
   void Run(); // get a frame and process
-
-  void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
-  void GetImage(Mat& left, Mat& disp, int num, bool flag); // get the num-th left and disp
-  void SaveImage(Mat& left, Mat& disp, int num, bool flag); // save the num-th left and disp 
+  
   void ProcessTemplate(); // preprocess all template images
   void ProcessTest(Mat& left, Mat& disp); // only process one test image
-  void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane
-  Rect FaceRecognition(Mat& img); // recognize human faces
+
+  void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
+  void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
   void GetPeople(PC::Ptr cloud); //  get people cluster
   void Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
@@ -82,6 +81,7 @@ public:
 
 private:
   Face search_face; // search human face
+  Image process_image; // process image(get, save)
   
   // for ros
   ros::NodeHandle nh;
@@ -100,7 +100,6 @@ private:
   int temp_xy_num; // number of templates in x-y plane
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr; // store template point clouds
-
   pcl::PointXYZ mid_point; // store midpoint of the face
 
   // show rviz
@@ -110,7 +109,7 @@ private:
 
 bool operator==(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
 {
-  if (abs(pt2.x - pt.x) < 50 && abs(pt2.y - pt.y) < 50 && abs(pt2.z - pt.z) < 5)
+  if (abs(pt2.x - pt.x) < 5 && abs(pt2.y - pt.y) < 5 && abs(pt2.z - pt.z) < 5)
     return true;
   else return false;
 }
