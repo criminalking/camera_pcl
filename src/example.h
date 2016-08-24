@@ -37,6 +37,9 @@
 #include "MoveSenseCamera.h"
 #include "FaceRecognition.h"
 
+#define TEMPLATE true
+#define TEST false
+
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale
 #define MEDIAN 9 // size of kernel (median filtering)
@@ -60,7 +63,10 @@ public:
   
   void Init(); // initialize
   void Run(); // get a frame and process
-  
+
+  void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
+  void GetImage(Mat& left, Mat& disp, int num, bool flag); // get the num-th left and disp
+  void SaveImage(Mat& left, Mat& disp, int num, bool flag); // save the num-th left and disp 
   void ProcessTemplate(); // preprocess all template images
   void ProcessTest(Mat& left, Mat& disp); // only process one test image
   void FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud); // use point clouds to fit a plane
@@ -69,7 +75,7 @@ public:
   void GetPeople(PC::Ptr cloud); //  get people cluster
   void Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
-  void Projection(PC::Ptr cloud, int flag = 3); // project to z-plane
+  void Projection(PC::Ptr cloud, int flag = 3); // project to plane(flag = 1: x, flag = 2: y, flag = 3: z)
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz

@@ -64,12 +64,6 @@ void BiCamera::FitPlane(PC::Ptr cloud, PC::Ptr fit_cloud) // need K
       cout << "ave = " << ave << " mm  ";
       // show z-axis distance
       cout << "distance = " << distance << " mm" << std::endl;
-
-      // // write in .txt
-      // ofstream out;
-      // out.open("out.txt", ios::app);
-      // out << error << " " << (ave + distance) / 2 << "\n";
-      // out.close();
     }
 }
 
@@ -96,28 +90,70 @@ void BiCamera::Init()
 }
 
 
+void BiCamera::GetImageFromCamera(Mat& left, Mat& disp)
+{
+  c->GetImageData(img_data, len);
+  for(int i = 0 ; i < height; ++i)
+    {
+      memcpy(left.data + width * i, img_data + (2 * i) * width, width);
+      memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
+    }
+}
+
+
+void BiCamera::SaveImage(Mat& left, Mat& disp, int num, bool flag) // flag == true: template, flag == false: test
+{
+  char left_name[60];
+  char disp_name[60];
+  if (flag == true)
+    {
+    sprintf(left_name, "img/template/left_%d.jpg", num);
+    sprintf(disp_name, "img/template/disp_%d.jpg", num);
+  }
+  else
+    {
+    sprintf(left_name, "img/test/left_%d.jpg", num);
+    sprintf(disp_name, "img/test/disp_%d.jpg", num);
+  }
+  imwrite(left_name, left);
+  imwrite(disp_name, disp);
+}
+
+
+void BiCamera::GetImage(Mat& left, Mat& disp, int num, bool flag) // flag == true: template, flag == false: test
+{
+  char left_name[60];
+  char disp_name[60];
+  if (flag == true)
+    {
+    sprintf(left_name, "img/template/left_%d.jpg", num);
+    sprintf(disp_name, "img/template/disp_%d.jpg", num);
+  }
+  else
+    {
+    sprintf(left_name, "img/test/left_%d.jpg", num);
+    sprintf(disp_name, "img/test/disp_%d.jpg", num);
+  }
+  left = imread(left_name, 0);
+  disp = imread(disp_name, 0);
+}
+
+
 void BiCamera::Run()
 {
   //Mat left, disp;
   int num = 1;
-  char left_name[60];
-  char disp_name[60];
   
   // create filter_pointer which points to all template pointclouds
-  ProcessTemplate(); // preprocess template
+  //ProcessTemplate(); // preprocess template
   
   loop_rate = new ros::Rate(4);
 
   while (nh.ok())
     {
       // if use camera
-      c->GetImageData(img_data, len);
       Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
-      for(int i = 0 ; i < height; ++i)
-      	{
-      	  memcpy(left.data + width * i, img_data + (2 * i) * width, width);
-      	  memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
-      	}
+      GetImageFromCamera(left, disp);
 
       imshow("left", left);
       imshow("disp", disp);
@@ -128,18 +164,18 @@ void BiCamera::Run()
       // if use camera
       else if (key == 's') // save
       	{
-      	  sprintf(left_name, "left_%d.jpg", num);
-      	  sprintf(disp_name, "disp_%d.jpg", num);
+          SaveImage(left, disp, num, TEMPLATE);
       	  ++num;
-      	  imwrite(left_name, left);
-      	  imwrite(disp_name, disp);
+
+          // read image
+          // GetImage(left, disp, 2, TEST);
 
   	  // compute time
   	  clock_t start, finish;
   	  double totaltime;
   	  start = clock();
   
-  	  ProcessTest(left, disp); // estimate test poses
+          //ProcessTest(left, disp); // estimate test poses
             
   	  finish = clock();
   	  totaltime = (double)(finish - start);
@@ -181,21 +217,21 @@ void BiCamera::ProcessTemplate()
       Rect human_face = search_face.Haar(left); // search for human face      
       
       DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
-      
-      PC::Ptr cloud_filtered(new PC);
-      Filter(cloud, cloud_filtered); // filter point clouds
-      
-      GetPeople(cloud_filtered); // get people cluster
 
-      if (i == 2) *cloud_rviz_1 = *cloud_filtered;
-      if (i == 4) *cloud_rviz_2 = *cloud_filtered;
+      if (i == 0) *cloud_rviz_1 = *cloud;
+      if (i == 1) *cloud_rviz_2 = *cloud;
       
-      PC::Ptr cloud_normalized(new PC);
-      Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
+      // PC::Ptr cloud_filtered(new PC);
+      // Filter(cloud, cloud_filtered); // filter point clouds
       
-      Projection(cloud_normalized); // project to z-plane
+      // GetPeople(cloud_filtered); // get people cluster
       
-      temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
+      // PC::Ptr cloud_normalized(new PC);
+      // Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
+      
+      // Projection(cloud_normalized); // project to z-plane
+      
+      // temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
     }
   cout << "ProcessTemplate over.\n";
 }
@@ -297,6 +333,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   mid_point.z = kBMultipyF / d_real;
   mid_point.x = (u - kCu) * mid_point.z / kF;
   mid_point.y = (v - kCv) * mid_point.z / kF;
+  cout << "mid_point" << mid_point << endl;
   
   // convert depth image to point cloud (z-value has constraint)
   int index = 0;
@@ -315,18 +352,19 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   	y = (v - kCv) * z / kF;
 
   	// store data to cloud
-  	if (z > 1000 && z < mid_point.z + 30) // constraint z-value
+if (z > 500 && z < 5000)//mid_point.z + 30) // constraint z-value
+  //if (x < 100 && x > -100)
   	  {
   	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
   	    cloud->points[index].y = y / SCALE;
   	    cloud->points[index].z = z / SCALE;
   	    ++index;
-  	 }
+          }
       }
-  cloud->points.resize(index); // remove no-data points
+  cloud->points.resize(index); // remove no-data points 
 
   mid_point /= SCALE;
-  cout << "mid_point" << mid_point << endl;
+  cout << "mid_point / SCALE" << mid_point << endl;
 }
 
 
