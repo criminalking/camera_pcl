@@ -28,6 +28,7 @@
 
 // opencv includes
 #include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 #include "opencv2/opencv.hpp"
 #include "opencv2/imgcodecs/imgcodecs.hpp"
 #include "opencv2/core/core.hpp"
@@ -59,7 +60,7 @@ public:
     float score;
   };
 
- BiCamera(): width(752), height(480), temp_num(9), temp_xy_num(6), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
+  BiCamera(): width(752), height(480), temp_num(9), temp_xy_num(6), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -69,6 +70,8 @@ public:
   void ProcessTest(Mat& left, Mat& disp); // only process one test image
 
   void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
+  //void ImageCallback(const sensor_msgs::ImageConstPtr& msg);
+  
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
   void GetPeople(PC::Ptr cloud); //  get people cluster
@@ -85,9 +88,14 @@ private:
   Image process_image; // process image(get, save)
   
   // for ros
-  ros::NodeHandle nh;
+  ros::NodeHandle nh;  
   ros::Publisher pub;
   ros::Publisher pub2;
+
+  ros::NodeHandle nh_image;
+  image_transport::Publisher pub_image;
+  image_transport::Subscriber sub_image;
+  
   ros::Rate *loop_rate;
 
   // for camera

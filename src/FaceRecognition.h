@@ -14,11 +14,11 @@
 #include "opencv2/core/core.hpp"
 #include "opencv2/highgui/highgui.hpp"
 
-#include <dlib/image_processing/frontal_face_detector.h>
-#include <dlib/gui_widgets.h>
-#include <dlib/image_io.h>
+/* #include <dlib/image_processing/frontal_face_detector.h> */
+/* #include <dlib/gui_widgets.h> */
+/* #include <dlib/image_io.h> */
 
-using namespace dlib;
+//using namespace dlib;
 using namespace std;
 using namespace cv;
 
@@ -26,8 +26,8 @@ class Face
 {
  public:
   Face(): face_num(1) {} 
-  Rect Haar(Mat& img); // method 1: haar
-  void Dlib(Mat& img); // method 2: dlib
+  cv::Rect Haar(Mat& img); // method 1: haar
+  cv::Rect Dlib(Mat& img); // method 2: dlib
 
  private:
   // store face images

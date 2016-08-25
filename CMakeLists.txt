@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.4.6)
 include($ENV{ROS_ROOT}/core/rosbuild/rosbuild.cmake)
+
+# add address of dlib 
 include(/home/criminalking/Softwares/dlib/dlib/cmake)
 
 # Set the build type.  Options are:
@@ -28,6 +30,7 @@ add_definitions(${PCL_DEFINITIONS})
 
 #for openCV
 find_package(cv_bridge)
+find_package(image_transport REQUIRED)
 find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
