@@ -18,9 +18,7 @@ static void ChatterCallback(const std_msgs::Int32MultiArray::ConstPtr& myMsg)
 
 BiCamera::~BiCamera()
 {
-  delete c;
   delete loop_rate;
-  delete[] img_data;
 }
 
 
@@ -85,20 +83,6 @@ void BiCamera::Init()
   sub = nh_image.subscribe("faceCoord", 1000, ChatterCallback);
 
   flag_sub = false;
-
-  // set and open camera
-  sel = CAM_STEREO_752X480_LD_30FPS;
-  c = new movesense::MoveSenseCamera(sel);
-
-  // // if use camera
-  // if(!(movesense::MS_SUCCESS == c->OpenCamera()))
-  //   {
-  //     std::cout << "Open Camera Failed!" << std::endl;
-  //     std::exit(1);
-  //   }
-
-  len  = width * height * 2;
-  img_data = new unsigned char[len];
 }
 
 
@@ -120,7 +104,7 @@ void BiCamera::Run()
     {
       // if use camera
       Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
-      //GetImageFromCamera(left, disp);
+      //process_image.GetImageFromCamera(left, disp);
 
       //imshow("left", left);
       //imshow("disp", disp);
@@ -128,7 +112,6 @@ void BiCamera::Run()
       char key = waitKey(10);
       if(key == 'q') // quit
   	break;
-      // if use camera
       //else if (key == 's') // save
       //	{
           //process_image.SaveImage(left, disp, num, TEST);
@@ -153,7 +136,6 @@ void BiCamera::Run()
 	  //	}
 
       ShowRviz();
-      
       
       loop_rate->sleep ();
       ros::spinOnce ();
@@ -189,15 +171,18 @@ bool BiCamera::ProcessTemplate()
       	  loop_rate->sleep();
 	  ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
       	}
-      Rect human_face = search_face.Dlib(Arr); 
+      Rect human_face = search_face.Dlib(Arr);
+      if (human_face == cv::Rect(0, 0, 0, 0)) return false;
       
       DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
       
       PC::Ptr cloud_filtered(new PC);
       if (Filter(cloud, cloud_filtered) == false) // filter point clouds
-	  return false; 
+	return false; 
       
-      GetPeople(cloud_filtered); // get people cluster
+      if (GetPeople(cloud_filtered) == false) // get people cluster
+	return false;
+      
       if (i == 6) *cloud_rviz_1 = *cloud_filtered;
       if (i == 7) *cloud_rviz_2 = *cloud_filtered;
 
@@ -245,14 +230,14 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp)
     }
   Rect human_face = search_face.Dlib(Arr);
   if (human_face == cv::Rect(0, 0, 0, 0)) return false;
-  //  cout << "human_face: " << human_face << endl;
 
   DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
   
   PC::Ptr cloud_filtered(new PC);
   if (Filter(cloud, cloud_filtered) == false) return false;
     
-  GetPeople(cloud_filtered); // get people cluster
+  if (GetPeople(cloud_filtered) == false) // get people cluster
+    return false;
   
   PC::Ptr cloud_normalized (new PC);
   Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
@@ -305,17 +290,6 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp)
     return false;
   
   return true;
-}
-
-
-void BiCamera::GetImageFromCamera(Mat& left, Mat& disp)
-{
-  c->GetImageData(img_data, len);
-  for(int i = 0 ; i < height; ++i)
-    {
-      memcpy(left.data + width * i, img_data + (2 * i) * width, width);
-      memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
-    }
 }
 
 
@@ -376,7 +350,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
 }
 
 
-void BiCamera::GetPeople(PC::Ptr cloud)
+bool BiCamera::GetPeople(PC::Ptr cloud)
 {
   const float kClusterTolerance = 5.0;
   const int kMinClusterSize = 1000;
@@ -399,7 +373,10 @@ void BiCamera::GetPeople(PC::Ptr cloud)
   int num = 0;
 
   if (cluster_indices.size() == 0)
-    ROS_WARN("No people cluster.\n");
+    {
+      ROS_WARN("No people cluster.\n");
+      return false;
+    }
   else
     { 
       for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
@@ -424,8 +401,13 @@ void BiCamera::GetPeople(PC::Ptr cloud)
 	      break;
   	    }
   	}
-      if (flag == false) ROS_WARN("No people cluster.\n"); // midpoint is not in valid clusters
+      if (flag == false)
+	{
+	  ROS_WARN("No people cluster.\n"); // midpoint is not in valid clusters
+	  return false;
+	}
     }
+  return true;
 }
 
 
@@ -457,10 +439,8 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   // float theta = atan (tan_theta); // degree
   // cout << "theta " << theta * 180 / M_PI << endl;
   
-  Eigen::Matrix3d m(1, 3);
-  m << 0.0, 0.0, 0.0;
   PC::Ptr cloud_transformed (new PC);
-  Transform(cloud, cloud_transformed, 0, m);
+  *cloud_transformed = *cloud;
 
   // second: scale
   pcl::PointXYZ min_pt, max_pt;
@@ -487,6 +467,7 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   y_offset = y_offset * scale / index;
   
   // third: translate
+  Eigen::Matrix3d m(1, 3);
   m << -x_middle * scale, -y_offset, 0.0;
   Transform(cloud_transformed, cloud_normalized, 0, m);
 }

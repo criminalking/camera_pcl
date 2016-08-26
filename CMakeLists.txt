@@ -51,6 +51,8 @@ target_link_libraries( MoveSenseCamera Camera)
 add_library(FaceRecognition src/FaceRecognition.cpp)
 add_library(ProcessImage src/ProcessImage.cpp)
 
+target_link_libraries(ProcessImage MoveSenseCamera)
+
 rosbuild_add_executable(PoseRecognition src/PoseRecognition.cpp)
 target_link_libraries(  PoseRecognition  VL4IF CameraCtrl Camera MoveSenseCamera FaceRecognition ProcessImage ${OpenCV_LIBS} dlib)
 INCLUDE_DIRECTORIES(  ${OPENCV_INCLUDE_DIR} )

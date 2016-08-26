@@ -39,7 +39,6 @@
 #include "opencv2/highgui/highgui.hpp"
 
 // my other codes
-#include "MoveSenseCamera.h"
 #include "FaceRecognition.h"
 #include "ProcessImage.h"
 
@@ -72,12 +71,10 @@ public:
   
   bool ProcessTemplate(); // preprocess all template images
   bool ProcessTest(Mat& left, Mat& disp); // only process one test image
-
-  void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
   
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
-  void GetPeople(PC::Ptr cloud); //  get people cluster
+  bool GetPeople(PC::Ptr cloud); //  get people cluster
   bool Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
   void Projection(PC::Ptr cloud, int flag = 3); // project to plane(flag = 1: x, flag = 2: y, flag = 3: z)
@@ -103,12 +100,8 @@ private:
   ros::Rate *loop_rate;
 
   // for camera
-  movesense::CameraMode sel;
-  movesense::MoveSenseCamera *c;
   int width;
   int height;
-  int len;
-  unsigned char *img_data;
   int temp_num; // number of templates
   int temp_xy_num; // number of templates in x-y plane
 
