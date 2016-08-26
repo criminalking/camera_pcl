@@ -1,4 +1,4 @@
-#include "example.h"
+#include "PoseRecognition.h"
 
 bool flag_sub;
 int Arr[200];
@@ -110,7 +110,11 @@ void BiCamera::Run()
   loop_rate = new ros::Rate(4);
   
   // create filter_pointer which points to all template pointclouds
-  ProcessTemplate(); // preprocess template
+  if (ProcessTemplate() == false) // preprocess template
+    {
+      ROS_WARN("Sorry, you must restart this machine...\n");
+      exit(0);
+    }
 
   while (nh.ok())
     {
@@ -125,37 +129,39 @@ void BiCamera::Run()
       if(key == 'q') // quit
   	break;
       // if use camera
-      else if (key == 's') // save
-      	{
-          // //process_image.SaveImage(left, disp, num, TEST);
-      	  // //++num;
-	  // //Rect human_face = search_face.Haar(left); // search for human face
+      //else if (key == 's') // save
+      //	{
+          //process_image.SaveImage(left, disp, num, TEST);
+      	  //++num;
+	  //Rect human_face = search_face.Haar(left); // search for human face
 	  
-  	  // // compute time
-  	  // clock_t start, finish;
-  	  // double totaltime;
-  	  // start = clock();
+  	  // compute time
+  	  clock_t start, finish;
+  	  double totaltime;
+  	  start = clock();
 
-	  // // read image
-	  // if (num > 9) break;
-          // process_image.GetImage(left, disp, num, TEST);
-	  // ProcessTest(left, disp); // estimate test poses
-	  // ++num;
+	  // read image
+	  if (num > 9) break;
+          process_image.GetImage(left, disp, num, TEST);
+	  if (ProcessTest(left, disp) == false) // estimate test poses
+	    ROS_WARN("Sorry, no poses are found.\n");
+	  ++num;
             
-  	  // finish = clock();
-  	  // totaltime = (double)(finish - start);
-  	  // cout << "\n run time = " << totaltime / 1000.0 << "ms！" << endl;
-      	}
+  	  finish = clock();
+  	  totaltime = (double)(finish - start);
+  	  cout << "\nrun time = " << totaltime / 1000.0 << "ms！" << endl;
+	  //	}
 
       ShowRviz();
       
-      ros::spinOnce ();
+      
       loop_rate->sleep ();
+      ros::spinOnce ();
     }
 }
 
 
-void BiCamera::ProcessTemplate() 
+bool BiCamera::ProcessTemplate() 
 {
   Mat left, disp;
   for (int i = 0; i < temp_num; ++i)
@@ -171,26 +177,29 @@ void BiCamera::ProcessTemplate()
 
       medianBlur(disp, disp, MEDIAN); // median filtering
 
-      // using Haar method to search for human face
-      //
+      // using Haar-method to search for human face
+      // Rect human_face = search_face.Haar(left); 
 
-      // using Dlib method to search for human face
+      // using Dlib-method to search for human face
       sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
       flag_sub = false;
       while (flag_sub == false)
       	{
       	  pub_image.publish(msg); // send image to human_face_detection_package
       	  loop_rate->sleep();
-	  ros::spinOnce(); 
+	  ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
       	}
       Rect human_face = search_face.Dlib(Arr); 
       
       DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
       
       PC::Ptr cloud_filtered(new PC);
-      Filter(cloud, cloud_filtered); // filter point clouds
+      if (Filter(cloud, cloud_filtered) == false) // filter point clouds
+	  return false; 
       
       GetPeople(cloud_filtered); // get people cluster
+      if (i == 6) *cloud_rviz_1 = *cloud_filtered;
+      if (i == 7) *cloud_rviz_2 = *cloud_filtered;
 
       pcl::PointXYZ min_pt, max_pt;
       pcl::getMinMax3D(*cloud_filtered, min_pt, max_pt); // get minmum and maximum points in the z-axis
@@ -204,17 +213,15 @@ void BiCamera::ProcessTemplate()
       	Projection(cloud_normalized); // project to xy-plane
       else
       	Projection(cloud_normalized, 1); // project to yz-plane
-
-      if (i == 6) *cloud_rviz_1 = *cloud_normalized;
-      if (i == 7) *cloud_rviz_2 = *cloud_normalized;
       
       temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
     }
-  cout << "ProcessTemplate over.\n";
+  printf("ProcessTemplate over.\n");
+  return true;
 }
 
 
-void BiCamera::ProcessTest(Mat& left, Mat& disp) 
+bool BiCamera::ProcessTest(Mat& left, Mat& disp) 
 {
   PC::Ptr cloud(new PC);
   cloud->height = height;
@@ -224,13 +231,27 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
 
   medianBlur(disp, disp, MEDIAN); // median filtering
 
-  Rect human_face = search_face.Haar(left); // search for human face      
+  // using Haar-method to search for human face
+  // Rect human_face = search_face.Haar(left); 
+
+  // using Dlib-method to search for human face
+  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
+  flag_sub = false;
+  while (flag_sub == false)
+    {
+      pub_image.publish(msg); // send image to human_face_detection_package
+      loop_rate->sleep();
+      ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
+    }
+  Rect human_face = search_face.Dlib(Arr);
+  if (human_face == cv::Rect(0, 0, 0, 0)) return false;
+  //  cout << "human_face: " << human_face << endl;
 
   DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
   
   PC::Ptr cloud_filtered(new PC);
-  Filter(cloud, cloud_filtered); // filter point clouds
-
+  if (Filter(cloud, cloud_filtered) == false) return false;
+    
   GetPeople(cloud_filtered); // get people cluster
   
   PC::Ptr cloud_normalized (new PC);
@@ -281,8 +302,9 @@ void BiCamera::ProcessTest(Mat& left, Mat& disp)
   if (min_value < 10)
     printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min_value);
   else
-    printf("Sorry, no similiar images.\n");
-  cout << "ProcessTest over.\n";
+    return false;
+  
+  return true;
 }
 
 
@@ -351,7 +373,6 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   cloud->points.resize(index); // remove no-data points 
 
   mid_point /= SCALE;
-  cout << "mid_point / SCALE: " << mid_point << endl;
 }
 
 
@@ -378,7 +399,7 @@ void BiCamera::GetPeople(PC::Ptr cloud)
   int num = 0;
 
   if (cluster_indices.size() == 0)
-    cout << "No people cluster.\n";
+    ROS_WARN("No people cluster.\n");
   else
     { 
       for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
@@ -403,19 +424,25 @@ void BiCamera::GetPeople(PC::Ptr cloud)
 	      break;
   	    }
   	}
-      if (flag == false) cout << "No people cluster.\n"; // midpoint is not in valid clusters
+      if (flag == false) ROS_WARN("No people cluster.\n"); // midpoint is not in valid clusters
     }
 }
 
 
-void BiCamera::Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered)
+bool BiCamera::Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered)
 {
   const float kFilterSize = 1.2;
   pcl::VoxelGrid<pcl::PointXYZ> vg;
   vg.setInputCloud(cloud);
   vg.setLeafSize(kFilterSize, kFilterSize, kFilterSize);
   vg.filter(*cloud_filtered);
-  cout << cloud->points.size() << "   " << cloud_filtered->points.size() << endl;
+  cout << "Filter: " << cloud->points.size() << " " << cloud_filtered->points.size() << endl;
+  if (cloud_filtered->points.size() > 10000)
+    {
+      ROS_WARN("Filtering failed.\n");
+      return false;
+    }
+  else return true;
 }
 
 

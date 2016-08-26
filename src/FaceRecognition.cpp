@@ -21,7 +21,7 @@ cv::Rect Face::Haar(Mat& img)
       return roi;
     }
   else
-    cout << "Find no face." << endl;
+    ROS_WARN("Face detection failed.\n");
 }
 
 
@@ -37,6 +37,10 @@ cv::Rect Face::Dlib(int Arr[])
       roi.height = Arr[4];
       return roi;
     }
-  else printf("Face detection is wrong!");
+  else
+    {
+      ROS_WARN("Face detection failed.\n");
+      return cv::Rect(0, 0, 0, 0);
+    }
 }
 

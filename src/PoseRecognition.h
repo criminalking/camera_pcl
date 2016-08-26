@@ -1,5 +1,5 @@
-#ifndef EXAMPLE_H_
-#define EXAMPLE_H_
+#ifndef POSERECOGNITION_H_
+#define POSERECOGNITION_H_
 
 #include <iostream>
 #include <stdio.h>
@@ -70,15 +70,15 @@ public:
   void Init(); // initialize
   void Run(); // get a frame and process
   
-  void ProcessTemplate(); // preprocess all template images
-  void ProcessTest(Mat& left, Mat& disp); // only process one test image
+  bool ProcessTemplate(); // preprocess all template images
+  bool ProcessTest(Mat& left, Mat& disp); // only process one test image
 
   void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
   
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
   void GetPeople(PC::Ptr cloud); //  get people cluster
-  void Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
+  bool Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
   void Projection(PC::Ptr cloud, int flag = 3); // project to plane(flag = 1: x, flag = 2: y, flag = 3: z)
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
@@ -127,4 +127,4 @@ void operator/=(pcl::PointXYZ& pt, double num)
   pt.z = pt.z / num;
 }
 
-#endif // EXAMPLE_H_
+#endif // POSERECOGNITION_H_

@@ -51,8 +51,8 @@ target_link_libraries( MoveSenseCamera Camera)
 add_library(FaceRecognition src/FaceRecognition.cpp)
 add_library(ProcessImage src/ProcessImage.cpp)
 
-rosbuild_add_executable(example src/example.cpp)
-target_link_libraries(  example  VL4IF CameraCtrl Camera MoveSenseCamera FaceRecognition ProcessImage ${OpenCV_LIBS} dlib)
+rosbuild_add_executable(PoseRecognition src/PoseRecognition.cpp)
+target_link_libraries(  PoseRecognition  VL4IF CameraCtrl Camera MoveSenseCamera FaceRecognition ProcessImage ${OpenCV_LIBS} dlib)
 INCLUDE_DIRECTORIES(  ${OPENCV_INCLUDE_DIR} )
 
 #for boost
@@ -61,7 +61,7 @@ find_package(Boost 1.58.0 REQUIRED COMPONENTS system)
 #message(${Boost_LIBRARIES})
 include_directories(${Boost_INCLUDE_DIRS})
 link_directories(${Boost_LIBRARY_DIRS})
-target_link_libraries(example ${Boost_LIBRARIES})
+target_link_libraries(PoseRecognition ${Boost_LIBRARIES})
 
 #uncomment if you have defined messages
 #rosbuild_genmsg()
@@ -69,11 +69,11 @@ target_link_libraries(example ${Boost_LIBRARIES})
 #rosbuild_gensrv()
 
 #common commands for building c++ executables and libraries
-#rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
+#rosbuild_add_library(${PROJECT_NAME} src/PoseRecognition.cpp)
 #target_link_libraries(${PROJECT_NAME} ${PCL_LIBRARIES})
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
 
 #rosbuild_add_library(${PROJECT_NAME} src/Camera.cpp)
-target_link_libraries(example ${OpenCV_LIBRARIES})
-target_link_libraries(example ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})
+target_link_libraries(PoseRecognition ${OpenCV_LIBRARIES})
+target_link_libraries(PoseRecognition ${PCL_COMMON_LIBRARIES} ${PCL_IO_LIBRARIES})

@@ -7,6 +7,7 @@
 #include <math.h>
 #include <fstream>
 #include <time.h>
+#include <ros/ros.h>
 
 // opencv includes
 #include "opencv2/opencv.hpp"
