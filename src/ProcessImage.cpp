@@ -33,6 +33,6 @@ void Image::GetImage(Mat& left, Mat& disp, int num, bool flag) // flag == true: 
     sprintf(left_name, "img/test/left_%d.jpg", num);
     sprintf(disp_name, "img/test/disp_%d.jpg", num);
   }
-  left = imread(left_name, 0);
-  disp = imread(disp_name, 0);
+  left = imread(left_name, CV_LOAD_IMAGE_ANYDEPTH);
+  disp = imread(disp_name, CV_LOAD_IMAGE_ANYDEPTH);
 }

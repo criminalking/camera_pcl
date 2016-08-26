@@ -27,7 +27,7 @@ class Face
  public:
   Face(): face_num(1) {} 
   cv::Rect Haar(Mat& img); // method 1: haar
-  cv::Rect Dlib(Mat& img); // method 2: dlib
+  cv::Rect Dlib(int Arr[]); // method 2: dlib
 
  private:
   // store face images

@@ -9,6 +9,10 @@
 #include <time.h>
 #include <ros/ros.h>
 
+#include "std_msgs/MultiArrayLayout.h"
+#include "std_msgs/MultiArrayDimension.h"
+#include "std_msgs/Int32MultiArray.h"
+
 // PCL includes
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl/point_types.h>
@@ -70,7 +74,6 @@ public:
   void ProcessTest(Mat& left, Mat& disp); // only process one test image
 
   void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
-  //void ImageCallback(const sensor_msgs::ImageConstPtr& msg);
   
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
@@ -87,14 +90,15 @@ private:
   Face search_face; // search human face
   Image process_image; // process image(get, save)
   
-  // for ros
+  // for ros(rviz)
   ros::NodeHandle nh;  
   ros::Publisher pub;
   ros::Publisher pub2;
 
+  // for ros(send and receive image)
   ros::NodeHandle nh_image;
   image_transport::Publisher pub_image;
-  image_transport::Subscriber sub_image;
+  ros::Subscriber sub;
   
   ros::Rate *loop_rate;
 

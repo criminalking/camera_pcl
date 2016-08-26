@@ -1,5 +1,20 @@
 #include "example.h"
 
+bool flag_sub;
+int Arr[200];
+
+static void ChatterCallback(const std_msgs::Int32MultiArray::ConstPtr& myMsg)
+{
+  int i = 0;
+  //the data is being stored inside an array
+  for(std::vector<int>::const_iterator it = myMsg->data.begin(); it != myMsg->data.end(); ++it)
+  {
+    Arr[i] = *it;
+    i++;
+  }
+  flag_sub = true;
+}
+
 
 BiCamera::~BiCamera()
 {
@@ -59,29 +74,17 @@ void BiCamera::FitPlane(PC::Ptr cloud)
 }
 
 
-static void ImageCallback(const sensor_msgs::ImageConstPtr& msg)
-{
-  try
-    {
-      cv::imshow("view", cv_bridge::toCvShare(msg, "mono8")->image);
-      cv::waitKey(30);
-    }
-  catch (cv_bridge::Exception& e)
-    {
-      ROS_ERROR("Could not convert from '%s' to 'mono8'.", msg->encoding.c_str());
-    }
-}
-
 void BiCamera::Init()
 {
   // ros publish
   pub = nh.advertise<PC> ("points_temp", 1);
   pub2 = nh.advertise<PC> ("points_test", 1);
-
   
   image_transport::ImageTransport it(nh_image);
   pub_image = it.advertise("camera/image_raw", 1);
-  sub_image = it.subscribe("face_det/image_raw", 1, ImageCallback);
+  sub = nh_image.subscribe("faceCoord", 1000, ChatterCallback);
+
+  flag_sub = false;
 
   // set and open camera
   sel = CAM_STEREO_752X480_LD_30FPS;
@@ -147,7 +150,7 @@ void BiCamera::Run()
       ShowRviz();
       
       ros::spinOnce ();
-      loop_rate->sleep (); // private
+      loop_rate->sleep ();
     }
 }
 
@@ -168,42 +171,44 @@ void BiCamera::ProcessTemplate()
 
       medianBlur(disp, disp, MEDIAN); // median filtering
 
-      //Rect human_face = search_face.Haar(left); // search for human face
+      // using Haar method to search for human face
+      //
 
-      // publish image
+      // using Dlib method to search for human face
       sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
-      // if get the coordinate of the human face, break
-      while (nh.ok())
+      flag_sub = false;
+      while (flag_sub == false)
       	{
-      	  pub.publish(msg);
-      	  ros::spinOnce();
+      	  pub_image.publish(msg); // send image to human_face_detection_package
       	  loop_rate->sleep();
+	  ros::spinOnce(); 
       	}
+      Rect human_face = search_face.Dlib(Arr); 
       
-      // DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
+      DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
       
-      // PC::Ptr cloud_filtered(new PC);
-      // Filter(cloud, cloud_filtered); // filter point clouds
+      PC::Ptr cloud_filtered(new PC);
+      Filter(cloud, cloud_filtered); // filter point clouds
       
-      // GetPeople(cloud_filtered); // get people cluster
+      GetPeople(cloud_filtered); // get people cluster
 
-      // pcl::PointXYZ min_pt, max_pt;
-      // pcl::getMinMax3D(*cloud_filtered, min_pt, max_pt); // get minmum and maximum points in the z-axis
-      // float z_range = mid_point.z - min_pt.z;
-      // cout << "z_range: " << z_range << endl;
+      pcl::PointXYZ min_pt, max_pt;
+      pcl::getMinMax3D(*cloud_filtered, min_pt, max_pt); // get minmum and maximum points in the z-axis
+      float z_range = mid_point.z - min_pt.z;
+      cout << "z_range: " << z_range << endl;
       
-      // PC::Ptr cloud_normalized(new PC);
-      // Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
+      PC::Ptr cloud_normalized(new PC);
+      Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
 
-      // if (z_range < 20)
-      // 	Projection(cloud_normalized); // project to xy-plane
-      // else
-      // 	Projection(cloud_normalized, 1); // project to yz-plane
+      if (z_range < 20)
+      	Projection(cloud_normalized); // project to xy-plane
+      else
+      	Projection(cloud_normalized, 1); // project to yz-plane
 
-      // if (i == 6) *cloud_rviz_1 = *cloud_normalized;
-      // if (i == 7) *cloud_rviz_2 = *cloud_normalized;
+      if (i == 6) *cloud_rviz_1 = *cloud_normalized;
+      if (i == 7) *cloud_rviz_2 = *cloud_normalized;
       
-      // temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
+      temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
     }
   cout << "ProcessTemplate over.\n";
 }
