@@ -49,7 +49,7 @@ using namespace cv;
 #define TEST false
 
 #define SCALE 20.0 // reduce the value of data in order to accelerate
-#define HEIGHT 5.0 * 255.0 / SCALE // height of a person, for scale
+#define HEIGHT 4.0 * 255 / SCALE // height of a person, for scale
 #define MEDIAN 9 // size of kernel (median filtering)
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
@@ -106,7 +106,7 @@ private:
   int temp_xy_num; // number of templates in x-y plane
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr; // store template point clouds
-  pcl::PointXYZ mid_point; // store midpoint of the face
+  pcl::PointXYZ face_point; // store midpoint of the face
 
   // show rviz
   PC::Ptr cloud_rviz_1;

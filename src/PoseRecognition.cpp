@@ -155,9 +155,11 @@ bool BiCamera::ProcessTemplate()
       cloud->is_dense = false;
       cloud->points.resize(cloud->width * cloud->height);
 
-      process_image.GetImage(left, disp, i + 1, TEMPLATE); // get a template image
+      // get a template image
+      process_image.GetImage(left, disp, i + 1, TEMPLATE); 
 
-      medianBlur(disp, disp, MEDIAN); // median filtering
+      // median filtering
+      medianBlur(disp, disp, MEDIAN); 
 
       // using Haar-method to search for human face
       // Rect human_face = search_face.Haar(left); 
@@ -173,32 +175,37 @@ bool BiCamera::ProcessTemplate()
       	}
       Rect human_face = search_face.Dlib(Arr);
       if (human_face == cv::Rect(0, 0, 0, 0)) return false;
+
+      // depth image convert to point clouds
+      DepthImageToPc(disp, cloud, human_face);
       
-      DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
-      
+      // filter point clouds
       PC::Ptr cloud_filtered(new PC);
-      if (Filter(cloud, cloud_filtered) == false) // filter point clouds
+      if (Filter(cloud, cloud_filtered) == false) 
 	return false; 
-      
-      if (GetPeople(cloud_filtered) == false) // get people cluster
+
+      // get people cluster
+      if (GetPeople(cloud_filtered) == false) 
 	return false;
       
-      if (i == 6) *cloud_rviz_1 = *cloud_filtered;
-      if (i == 7) *cloud_rviz_2 = *cloud_filtered;
-
-      pcl::PointXYZ min_pt, max_pt;
-      pcl::getMinMax3D(*cloud_filtered, min_pt, max_pt); // get minmum and maximum points in the z-axis
-      float z_range = mid_point.z - min_pt.z;
-      cout << "z_range: " << z_range << endl;
-      
+      // normalize point clouds
       PC::Ptr cloud_normalized(new PC);
-      Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
+      Normalize(cloud_filtered, cloud_normalized);
 
-      if (z_range < 20)
-      	Projection(cloud_normalized); // project to xy-plane
-      else
-      	Projection(cloud_normalized, 1); // project to yz-plane
+      if (i == 8) *cloud_rviz_1 = *cloud_normalized; // show this cloud in rviz
+      if (i == 1) *cloud_rviz_2 = *cloud_normalized; // show this cloud in rviz
       
+      // compute z_range
+      pcl::PointXYZ min_pt, max_pt;
+      pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
+      float z_range = max_pt.z - min_pt.z;
+      cout << "z_range: " << z_range << endl;
+      if (z_range < 0) return false;
+      else if (z_range < 20)
+       	Projection(cloud_normalized); // project to xy-plane
+      //else
+      // 	Projection(cloud_normalized, 1); // project to yz-plane
+
       temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
     }
   printf("ProcessTemplate over.\n");
@@ -245,7 +252,7 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp)
   // compute the distance from face to the frontest part of the human body
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
-  float z_range = mid_point.z - min_pt.z;
+  float z_range = face_point.z - min_pt.z;
   cout << "z_range: " << z_range << endl;
   
   // match two point clouds using ICP
@@ -314,10 +321,10 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
     d_real = d / 4.0;
   else
     d_real = (d * 2 - 128) / 4.0;
-  mid_point.z = kBMultipyF / d_real;
-  mid_point.x = (u - kCu) * mid_point.z / kF;
-  mid_point.y = (v - kCv) * mid_point.z / kF;
-  cout << "mid_point" << mid_point << endl;
+  face_point.z = kBMultipyF / d_real;
+  face_point.x = (u - kCu) * face_point.z / kF;
+  face_point.y = (v - kCv) * face_point.z / kF;
+  cout << "face_point" << face_point << endl;
   
   // convert depth image to point cloud (z-value has constraint)
   int index = 0;
@@ -336,7 +343,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   	y = (v - kCv) * z / kF;
 
   	// store data to cloud
-	if (z > 1000 && z < mid_point.z + 200) // constraint z-value
+	if (z > 1000 && z < face_point.z + 150) // constraint z-value
 	  {
   	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
   	    cloud->points[index].y = y / SCALE;
@@ -344,9 +351,9 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   	    ++index;
 	  }
       }
-  cloud->points.resize(index); // remove no-data points 
+  cloud->points.resize(index); // remove no-data points
 
-  mid_point /= SCALE;
+  face_point /= SCALE;
 }
 
 
@@ -386,7 +393,7 @@ bool BiCamera::GetPeople(PC::Ptr cloud)
   	  for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
   	    {
   	      cloud_cluster->points.push_back(cloud->points[*pit]);
-  	      if (Equal(cloud->points[*pit], mid_point) == true) // the mid_point maybe be filtered
+  	      if (Equal(cloud->points[*pit], face_point) == true) // the face_point maybe be filtered
 		{
 		  flag = true; // this cluster contains the midpoint
 		  ++num;
@@ -444,31 +451,23 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
 
   // second: scale
   pcl::PointXYZ min_pt, max_pt;
-  pcl::getMinMax3D(*cloud_transformed, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
-  float x_range = max_pt.x - min_pt.x; // range of x-axis
-  float x_middle = x_range / 2 + min_pt.x;
-  float scale = HEIGHT / x_range;
-  float y_offset = 0.0;
-  int index = 0;
+  pcl::getMinMax3D(*cloud, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
+  float x_range = max_pt.x - face_point.x; // range of x-axis(Attention: face_point.x is negative)
+  float scale = HEIGHT / x_range; // compression ratio
+  float x_offset = (max_pt.x - x_range / 2) * scale; // middle of the x-axis * scale
+  float y_offset = face_point.y * scale; 
   
   // all points should multiple scale
   for (int i = 0; i < cloud->points.size(); ++i)
     {
-      if ((max_pt.x - cloud_transformed->points[i].x) < x_range / kHeadScale) // head
-  	{
-  	  y_offset += cloud_transformed->points[i].y;
-  	  ++index;
-  	}
       cloud_transformed->points[i].x *= scale;
       cloud_transformed->points[i].y *= scale;
       cloud_transformed->points[i].z *= scale;
     }
-
-  y_offset = y_offset * scale / index;
   
   // third: translate
   Eigen::Matrix3d m(1, 3);
-  m << -x_middle * scale, -y_offset, 0.0;
+  m << -x_offset, -y_offset, 0.0;
   Transform(cloud_transformed, cloud_normalized, 0, m);
 }
 
