@@ -52,8 +52,19 @@ using namespace cv;
 
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 4.0 * 255 / SCALE // height of a person, for scale
+#define ZRANGE 20 // if z_range < ZRANGE, this pose is only in xy-plane
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
+
+bool flag_sub;
+int Arr[200];
+int answer[68] = {8, 10, 1, 2, 3, 4, 6, 5, 0, 10,
+                  8, 9, 7, 1, 2, 4, 3, 6, 5, 9,
+                  7, 1, 2, 4, 3, 6, 5, 8, 10, 9,
+                  7, 1, 2, 4, 3, 6, 5, 10, 8, 9,
+                  0, 1, 2, 3, 4, 6, 5, 8, 10, 9,
+                  7, 1, 4, 3, 2, 5, 6, 0, 10, 8,
+                  9, 7, 1, 2, 4, 3, 6, 5};
 
 class BiCamera
 {  
@@ -64,14 +75,14 @@ public:
     float score;
   };
 
-  BiCamera(): width(752), height(480), temp_num(9), temp_xy_num(6), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
+  BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
   void Run(); // get a frame and process
   
   bool ProcessTemplate(); // preprocess all template images
-  bool ProcessTest(Mat& left, Mat& disp); // only process one test image
+  bool ProcessTest(Mat& left, Mat& disp, int num); // only process one test image
   
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
@@ -111,11 +122,6 @@ private:
   // show rviz
   PC::Ptr cloud_rviz_1;
   PC::Ptr cloud_rviz_2;
-
-  movesense::CameraMode sel;
-  movesense::MoveSenseCamera *c;
-  int len;
-  unsigned char *img_data;
 };
 
 #endif // POSERECOGNITION_H_
