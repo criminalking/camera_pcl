@@ -20,11 +20,14 @@ using namespace cv;
 class Image
 {  
  public:
- Image(): width(752), height(480), sel(CAM_STEREO_752X480_LD_30FPS), c(new movesense::MoveSenseCamera(sel)) {} 
+ Image(): width(752), height(480) {
+   
+  } 
   ~Image();
   void GetImage(Mat& left, Mat& disp, int num, bool flag); // get the num-th left and disp
   void SaveImage(Mat& left, Mat& disp, int num, bool flag); // save the num-th left and disp
   void GetImageFromCamera(Mat& left, Mat& disp); // get a image from camera
+  void OpenCamera();
 
  private:
   movesense::CameraMode sel;

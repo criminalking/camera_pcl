@@ -29,6 +29,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/common/pca.h>
 #include <pcl/registration/icp.h>
+#include <pcl/registration/gicp.h>
 
 // opencv includes
 #include <cv_bridge/cv_bridge.h>
@@ -41,6 +42,7 @@
 // my other codes
 #include "FaceRecognition.h"
 #include "ProcessImage.h"
+#include "MoveSenseCamera.h"
 
 using namespace std;
 using namespace cv;
@@ -50,7 +52,6 @@ using namespace cv;
 
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 #define HEIGHT 4.0 * 255 / SCALE // height of a person, for scale
-#define MEDIAN 9 // size of kernel (median filtering)
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
@@ -99,25 +100,22 @@ private:
   
   ros::Rate *loop_rate;
 
-  // for camera
-  int width;
-  int height;
+  int width; // width of image
+  int height; // height of image
   int temp_num; // number of templates
   int temp_xy_num; // number of templates in x-y plane
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr; // store template point clouds
-  pcl::PointXYZ face_point; // store midpoint of the face
+  pcl::PointXYZ face_mid_point; // store midpoint of the face
 
   // show rviz
   PC::Ptr cloud_rviz_1;
   PC::Ptr cloud_rviz_2;
-};
 
-void operator/=(pcl::PointXYZ& pt, double num)
-{
-  pt.x = pt.x / num;
-  pt.y = pt.y / num;
-  pt.z = pt.z / num;
-}
+  movesense::CameraMode sel;
+  movesense::MoveSenseCamera *c;
+  int len;
+  unsigned char *img_data;
+};
 
 #endif // POSERECOGNITION_H_

@@ -1,8 +1,11 @@
 #include "PoseRecognition.h"
 
+
 bool flag_sub;
 int Arr[200];
 
+
+// Once get the message from package face_detection, this function is called
 static void ChatterCallback(const std_msgs::Int32MultiArray::ConstPtr& myMsg)
 {
   int i = 0;
@@ -42,7 +45,7 @@ void BiCamera::FitPlane(PC::Ptr cloud)
   seg.setInputCloud (cloud);
   seg.segment (*inliers, *coefficients);
 
-  // print the coefficients of the plane
+  // get the coefficients of the plane
   double pa = coefficients->values[0];
   double pb = coefficients->values[1];
   double pc = coefficients->values[2];
@@ -82,41 +85,52 @@ void BiCamera::Init()
   pub_image = it.advertise("camera/image_raw", 1);
   sub = nh_image.subscribe("faceCoord", 1000, ChatterCallback);
 
-  flag_sub = false;
+  flag_sub = false; // a trigger
+
+  process_image.OpenCamera();
 }
 
 
 void BiCamera::Run()
 {
-  //Mat left, disp;
   int num = 1;
-
   loop_rate = new ros::Rate(4);
   
-  // create filter_pointer which points to all template pointclouds
-  if (ProcessTemplate() == false) // preprocess template
-    {
-      ROS_WARN("Sorry, you must restart this machine...\n");
-      exit(0);
-    }
+  // preprocess template
+  // while(true) 
+  //   {
+  //     if (ProcessTemplate() == true) break;
+  //   }
 
+  
   while (nh.ok())
     {
       // if use camera
-      Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
-      //process_image.GetImageFromCamera(left, disp);
+      Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map  
+      process_image.GetImageFromCamera(left, disp);
 
-      //imshow("left", left);
-      //imshow("disp", disp);
+      imshow("left", left);
+      imshow("disp", disp);
 
       char key = waitKey(10);
       if(key == 'q') // quit
   	break;
-      //else if (key == 's') // save
-      //	{
-          //process_image.SaveImage(left, disp, num, TEST);
-      	  //++num;
-	  //Rect human_face = search_face.Haar(left); // search for human face
+      else if (key == 's') // save
+      	{
+	  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
+	  flag_sub = false;
+	  while (flag_sub == false)
+	    {
+	      pub_image.publish(msg); // send image to human_face_detection_package
+	      loop_rate->sleep();
+	      ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
+	    }
+	  Rect human_face = search_face.Dlib(Arr);
+	  if (human_face != cv::Rect(0, 0, 0, 0)) // human face
+	    {
+	      process_image.SaveImage(left, disp, num, TEST);
+	      ++num;
+	    }
 	  
   	  // compute time
   	  clock_t start, finish;
@@ -124,16 +138,16 @@ void BiCamera::Run()
   	  start = clock();
 
 	  // read image
-	  if (num > 9) break;
-          process_image.GetImage(left, disp, num, TEST);
-	  if (ProcessTest(left, disp) == false) // estimate test poses
-	    ROS_WARN("Sorry, no poses are found.\n");
-	  ++num;
+	  //if (num > 8) break;
+          //process_image.GetImage(left, disp, 3, TEST);
+	  //if (ProcessTest(left, disp) == false) // estimate test poses
+	  //  ROS_WARN("Sorry, no poses are found.\n");
+	  //++num;
             
   	  finish = clock();
   	  totaltime = (double)(finish - start);
   	  cout << "\nrun time = " << totaltime / 1000.0 << "ms！" << endl;
-	  //	}
+	}
 
       ShowRviz();
       
@@ -159,7 +173,7 @@ bool BiCamera::ProcessTemplate()
       process_image.GetImage(left, disp, i + 1, TEMPLATE); 
 
       // median filtering
-      medianBlur(disp, disp, MEDIAN); 
+      medianBlur(disp, disp, 9); 
 
       // using Haar-method to search for human face
       // Rect human_face = search_face.Haar(left); 
@@ -174,7 +188,7 @@ bool BiCamera::ProcessTemplate()
 	  ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
       	}
       Rect human_face = search_face.Dlib(Arr);
-      if (human_face == cv::Rect(0, 0, 0, 0)) return false;
+      if (human_face == cv::Rect(0, 0, 0, 0)) return false; // no human face
 
       // depth image convert to point clouds
       DepthImageToPc(disp, cloud, human_face);
@@ -192,21 +206,19 @@ bool BiCamera::ProcessTemplate()
       PC::Ptr cloud_normalized(new PC);
       Normalize(cloud_filtered, cloud_normalized);
 
-      if (i == 8) *cloud_rviz_1 = *cloud_normalized; // show this cloud in rviz
-      if (i == 1) *cloud_rviz_2 = *cloud_normalized; // show this cloud in rviz
-      
       // compute z_range
       pcl::PointXYZ min_pt, max_pt;
       pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
       float z_range = max_pt.z - min_pt.z;
       cout << "z_range: " << z_range << endl;
       if (z_range < 0) return false;
-      else if (z_range < 20)
+      else if (z_range < 20) // x-y pose(could ignore z-axis)
        	Projection(cloud_normalized); // project to xy-plane
-      //else
+      //else // x-y-z pose
       // 	Projection(cloud_normalized, 1); // project to yz-plane
 
-      temp_cloud_ptr.push_back(cloud_normalized); // store template point clouds
+      // store template point clouds
+      temp_cloud_ptr.push_back(cloud_normalized); 
     }
   printf("ProcessTemplate over.\n");
   return true;
@@ -215,13 +227,15 @@ bool BiCamera::ProcessTemplate()
 
 bool BiCamera::ProcessTest(Mat& left, Mat& disp) 
 {
+  // create temperary point clouds storaging data
   PC::Ptr cloud(new PC);
   cloud->height = height;
   cloud->width = width;
   cloud->is_dense = false;
   cloud->points.resize(cloud->width * cloud->height);
 
-  medianBlur(disp, disp, MEDIAN); // median filtering
+  // median filtering
+  medianBlur(disp, disp, 9);
 
   // using Haar-method to search for human face
   // Rect human_face = search_face.Haar(left); 
@@ -232,34 +246,41 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp)
   while (flag_sub == false)
     {
       pub_image.publish(msg); // send image to human_face_detection_package
-      loop_rate->sleep();
+      loop_rate->sleep(); 
       ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
     }
   Rect human_face = search_face.Dlib(Arr);
-  if (human_face == cv::Rect(0, 0, 0, 0)) return false;
+  if (human_face == cv::Rect(0, 0, 0, 0)) return false; // no human face
 
-  DepthImageToPc(disp, cloud, human_face); // depth image convert to point clouds
-  
+  // depth image convert to point clouds
+  DepthImageToPc(disp, cloud, human_face); 
+
+  *cloud_rviz_1 = *cloud; // show this cloud in rviz
+
+  // filter point clouds
   PC::Ptr cloud_filtered(new PC);
   if (Filter(cloud, cloud_filtered) == false) return false;
-    
-  if (GetPeople(cloud_filtered) == false) // get people cluster
+
+  *cloud_rviz_2 = *cloud_filtered; // show this cloud in rviz
+
+  // get people cluster
+  if (GetPeople(cloud_filtered) == false) 
     return false;
-  
+
+  // normalize point cloud
   PC::Ptr cloud_normalized (new PC);
-  Normalize(cloud_filtered, cloud_normalized); // normalize point clouds
+  Normalize(cloud_filtered, cloud_normalized); 
 
   // compute the distance from face to the frontest part of the human body
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
-  float z_range = face_point.z - min_pt.z;
+  float z_range = face_mid_point.z - min_pt.z;
   cout << "z_range: " << z_range << endl;
   
   // match two point clouds using ICP
   PC::Ptr output(new PC);
   float min_value = FLT_MAX;
   int min_index = 0;
-
   if (z_range < 20) // pose in x-y plane
     {
       Projection(cloud_normalized); // project to xy-plane
@@ -277,7 +298,7 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp)
     }
   else // pose in x-y-z space
     {
-      Projection(cloud_normalized, 1); // project to yz-plane
+      //Projection(cloud_normalized, 1); // project to yz-plane
       for (int i = temp_xy_num; i < temp_num; ++i)
   	{      
   	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
@@ -290,7 +311,6 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp)
   	    }
   	}
     }
-
   if (min_value < 10)
     printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min_value);
   else
@@ -321,10 +341,10 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
     d_real = d / 4.0;
   else
     d_real = (d * 2 - 128) / 4.0;
-  face_point.z = kBMultipyF / d_real;
-  face_point.x = (u - kCu) * face_point.z / kF;
-  face_point.y = (v - kCv) * face_point.z / kF;
-  cout << "face_point" << face_point << endl;
+  face_mid_point.z = kBMultipyF / d_real;
+  face_mid_point.x = (u - kCu) * face_mid_point.z / kF;
+  face_mid_point.y = (v - kCv) * face_mid_point.z / kF;
+  cout << "face_mid_point" << face_mid_point << endl;
   
   // convert depth image to point cloud (z-value has constraint)
   int index = 0;
@@ -343,7 +363,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   	y = (v - kCv) * z / kF;
 
   	// store data to cloud
-	if (z > 1000 && z < face_point.z + 150) // constraint z-value
+	if (z > 1000 && z < face_mid_point.z + 250) // constraint z-value
 	  {
   	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
   	    cloud->points[index].y = y / SCALE;
@@ -353,7 +373,9 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
       }
   cloud->points.resize(index); // remove no-data points
 
-  face_point /= SCALE;
+  face_mid_point.x /= SCALE;
+  face_mid_point.y /= SCALE;
+  face_mid_point.z /= SCALE;
 }
 
 
@@ -393,7 +415,7 @@ bool BiCamera::GetPeople(PC::Ptr cloud)
   	  for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
   	    {
   	      cloud_cluster->points.push_back(cloud->points[*pit]);
-  	      if (Equal(cloud->points[*pit], face_point) == true) // the face_point maybe be filtered
+  	      if (Equal(cloud->points[*pit], face_mid_point) == true) // the face_mid_point maybe be filtered
 		{
 		  flag = true; // this cluster contains the midpoint
 		  ++num;
@@ -426,7 +448,7 @@ bool BiCamera::Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered)
   vg.setLeafSize(kFilterSize, kFilterSize, kFilterSize);
   vg.filter(*cloud_filtered);
   cout << "Filter: " << cloud->points.size() << " " << cloud_filtered->points.size() << endl;
-  if (cloud_filtered->points.size() > 10000)
+  if (cloud_filtered->points.size() > 10000 || cloud_filtered->points.size() < 1000)
     {
       ROS_WARN("Filtering failed.\n");
       return false;
@@ -452,10 +474,10 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   // second: scale
   pcl::PointXYZ min_pt, max_pt;
   pcl::getMinMax3D(*cloud, min_pt, max_pt); // get minmum and maximum points in the x-axis(actually y)
-  float x_range = max_pt.x - face_point.x; // range of x-axis(Attention: face_point.x is negative)
+  float x_range = max_pt.x - face_mid_point.x; // range of x-axis(Attention: face_mid_point.x is negative)
   float scale = HEIGHT / x_range; // compression ratio
   float x_offset = (max_pt.x - x_range / 2) * scale; // middle of the x-axis * scale
-  float y_offset = face_point.y * scale; 
+  float y_offset = face_mid_point.y * scale; 
   
   // all points should multiple scale
   for (int i = 0; i < cloud->points.size(); ++i)
@@ -500,9 +522,10 @@ void BiCamera::Transform(PC::Ptr cloud, PC::Ptr trans, float theta, Eigen::Matri
 BiCamera::ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output) // ICP
 {
   const float kIcpDistance = 0.05;
-  pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;  
+  //pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp; // method 1
+  pcl::GeneralizedIterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp; // method 2
   icp.setMaxCorrespondenceDistance(kIcpDistance); // this param is very important!!!  
-  icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than threshold, converge
+  icp.setTransformationEpsilon(1e-10); // if difference between two transformation matrix smaller than this threshold, converge
   icp.setEuclideanFitnessEpsilon(0.01); // if sum of MSE smaller than threshold, converge
   icp.setMaximumIterations(100); // if iteration smaller than threshold, converge
   
@@ -510,10 +533,10 @@ BiCamera::ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Pt
   icp.setInputTarget(target);  
   icp.align(*output);  
   cout << "has converged:" << icp.hasConverged() << " score: " << icp.getFitnessScore() << endl;  
-  
-  output->resize(target->size() + output->size());  
-  for (int i = 0; i < target->size(); ++i)  
-    output->push_back(target->points[i]); // merge two points 
+
+  //output->resize(target->size() + output->size());  
+  //for (int i = 0; i < target->size(); ++i)  
+  //  output->push_back(target->points[i]); // merge two points 
   //cout << icp.getFinalTransformation() << endl;
 
   BiCamera::ICP_result result;
@@ -528,17 +551,17 @@ void BiCamera::ShowRviz()
   PC::Ptr msg (new PC);
   PC::Ptr msg2 (new PC);
 
-  msg->header.frame_id = "map";
+  msg->header.frame_id = "map"; // necessary
   msg->height = cloud_rviz_1->points.size();
   msg->width = 1;
   msg->is_dense = true;
   msg->points.resize(cloud_rviz_1->points.size()); // necessary
 
-  msg2->header.frame_id = "map";
+  msg2->header.frame_id = "map"; // necessary
   msg2->height = cloud_rviz_2->points.size();
   msg2->width = 1;
   msg2->is_dense = true;
-  msg2->points.resize(cloud_rviz_2->points.size());
+  msg2->points.resize(cloud_rviz_2->points.size()); // necessary
       
   for (size_t i = 0; i < msg->points.size (); ++i)
    {

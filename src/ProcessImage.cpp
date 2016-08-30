@@ -46,6 +46,19 @@ void Image::GetImage(Mat& left, Mat& disp, int num, bool flag) // flag == true: 
 
 void Image::GetImageFromCamera(Mat& left, Mat& disp)
 {
+  c->GetImageData(img_data, len);
+  for(int i = 0 ; i < height; ++i)
+    {
+      memcpy(left.data + width * i, img_data + (2 * i) * width, width);
+      memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
+    }
+}
+
+
+void Image::OpenCamera()
+{
+  sel = CAM_STEREO_752X480_LD_30FPS;
+  c = new movesense::MoveSenseCamera(sel);
   if(!(movesense::MS_SUCCESS == c->OpenCamera()))
     {
       std::cout << "Open Camera Failed!" << std::endl;
@@ -54,11 +67,4 @@ void Image::GetImageFromCamera(Mat& left, Mat& disp)
 
   len  = width * height * 2;
   img_data = new unsigned char[len];
-  
-  c->GetImageData(img_data, len);
-  for(int i = 0 ; i < height; ++i)
-    {
-      memcpy(left.data + width * i, img_data + (2 * i) * width, width);
-      memcpy(disp.data + width * i, img_data + (2 * i + 1) * width, width);
-    }
 }
