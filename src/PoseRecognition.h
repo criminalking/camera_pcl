@@ -19,6 +19,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/conditional_removal.h>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/ModelCoefficients.h>
 #include <pcl/sample_consensus/method_types.h>
@@ -58,13 +59,14 @@ typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
 bool flag_sub;
 int Arr[200];
+// right answer of 68 test images
 int answer[68] = {8, 10, 1, 2, 3, 4, 6, 5, 0, 10,
                   8, 9, 7, 1, 2, 4, 3, 6, 5, 9,
                   7, 1, 2, 4, 3, 6, 5, 8, 10, 9,
                   7, 1, 2, 4, 3, 6, 5, 10, 8, 9,
                   0, 1, 2, 3, 4, 6, 5, 8, 10, 9,
                   7, 1, 4, 3, 2, 5, 6, 0, 10, 8,
-                  9, 7, 1, 2, 4, 3, 6, 5};
+                  9, 7, 1, 2, 4, 3, 6, 5};         
 
 class BiCamera
 {  
@@ -75,7 +77,7 @@ public:
     float score;
   };
 
-  BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7), cloud_rviz_1(new PC), cloud_rviz_2(new PC) {} 
+ BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7), cloud_rviz_1(new PC), cloud_rviz_2(new PC), cloud_rviz_3(new PC){} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -85,7 +87,8 @@ public:
   bool ProcessTest(Mat& left, Mat& disp, int num); // only process one test image
   
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
-  void DepthImageToPc(Mat& depth_image, PC::Ptr cloud, Rect face); // convert depth-image to point clouds
+  void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
+  void Segmentation(Mat& depth_image, PC::Ptr cloud, Rect face); // constraint point clouds in a z_range and compress point clouds
   bool GetPeople(PC::Ptr cloud); //  get people cluster
   bool Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
@@ -101,8 +104,9 @@ private:
   
   // for ros(rviz)
   ros::NodeHandle nh;  
-  ros::Publisher pub;
-  ros::Publisher pub2;
+  ros::Publisher pub; // show rviz of computed template point clouds
+  ros::Publisher pub2; // show rviz of right template point clouds
+  ros::Publisher pub3; // show rviz of point clouds
 
   // for ros(send and receive image)
   ros::NodeHandle nh_image;
@@ -122,6 +126,7 @@ private:
   // show rviz
   PC::Ptr cloud_rviz_1;
   PC::Ptr cloud_rviz_2;
+  PC::Ptr cloud_rviz_3;
 };
 
 #endif // POSERECOGNITION_H_

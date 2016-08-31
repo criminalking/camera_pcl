@@ -74,8 +74,9 @@ void BiCamera::FitPlane(PC::Ptr cloud)
 void BiCamera::Init()
 {
   // ros publish
-  pub = nh.advertise<PC> ("points_temp", 1);
-  pub2 = nh.advertise<PC> ("points_test", 1);
+  pub = nh.advertise<PC> ("points_compute", 1); 
+  pub2 = nh.advertise<PC> ("points_right", 1);
+  pub3 = nh.advertise<PC> ("points_test", 1);
   
   image_transport::ImageTransport it(nh_image);
   pub_image = it.advertise("camera/image_raw", 1);
@@ -90,12 +91,16 @@ void BiCamera::Init()
 void BiCamera::Run()
 {
   int num;
-  //int face_index[9] = {9, 17, 18, 32, 34, 42, 52, 58, 63}; // for test
-  int length = 68;
-  int face_index[length];
-  for (int i = 0; i < length; i++)
-    face_index[i] = i + 1;
+  int length = 9;
   int index = 0;
+
+  // test some error images
+  int face_index[9] = {9, 17, 18, 32, 34, 42, 52, 58, 63};
+
+  // test all images
+  //int face_index[length];
+  //for (int i = 0; i < length; i++)
+  //  face_index[i] = i + 1;
   
   loop_rate = new ros::Rate(4);
   
@@ -162,7 +167,10 @@ bool BiCamera::ProcessTemplate()
       process_image.GetImage(left, disp, i + 1, TEMPLATE); 
 
       // median filtering
-      medianBlur(disp, disp, 9); 
+      medianBlur(disp, disp, 9);
+
+      // depth image convert to point clouds
+      DepthImageToPc(disp, cloud);
 
       // using Haar-method to search for human face
       // Rect human_face = search_face.Haar(left); 
@@ -178,9 +186,7 @@ bool BiCamera::ProcessTemplate()
       	}
       Rect human_face = search_face.Dlib(Arr);
       if (human_face == cv::Rect(0, 0, 0, 0)) return false; // no human face
-
-      // depth image convert to point clouds
-      DepthImageToPc(disp, cloud, human_face);
+      Segmentation(disp, cloud, human_face);
       
       // filter point clouds
       PC::Ptr cloud_filtered(new PC);
@@ -242,7 +248,8 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
   if (human_face == cv::Rect(0, 0, 0, 0)) return false; // no human face
 
   // depth image convert to point clouds
-  DepthImageToPc(disp, cloud, human_face);
+  DepthImageToPc(disp, cloud);
+  Segmentation(disp, cloud, human_face);
 
   // filter point clouds
   PC::Ptr cloud_filtered(new PC);
@@ -269,7 +276,7 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
   if (z_range < ZRANGE) // pose in xy-plane
     {
       Projection(cloud_normalized); // project to xy-plane
-      *cloud_rviz_2 = *cloud_normalized;
+      *cloud_rviz_3 = *cloud_normalized;
       for (int i = 0; i < temp_xy_num; ++i)
   	{      
   	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
@@ -285,6 +292,8 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
 	{
 	  printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min_value);
 	  *cloud_rviz_1 = *temp_cloud_ptr[min_index];
+	  if (answer[num - 1] - 1 >= 0 && answer[num - 1] - 1 < 10)
+	    *cloud_rviz_2 = *temp_cloud_ptr[answer[num - 1] - 1];
 	  if (min_index + 1 == answer[num - 1]) printf("\n%d Right!!!!!!!!!!!!\n", num);
 	  else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
 	}
@@ -304,7 +313,7 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
 
       for (size_t i = 0; i < cloud_normalized->points.size (); ++i)
 	{
-	  if (cloud_normalized->points[i].z - min_pt.z > 8 && cloud_normalized->points[i].z - min_pt.z < 12) // get points in a line and search for the y_range
+	  if (cloud_normalized->points[i].z - min_pt.z > 8 && cloud_normalized->points[i].z - min_pt.z < 12) // get points in a interval  and search for the y_range
 	    {
 	      if (cloud_normalized->points[i].y < y_min) y_min = cloud_normalized->points[i].y;
 	      else if (cloud_normalized->points[i].y > y_max) y_max = cloud_normalized->points[i].y;
@@ -343,19 +352,15 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
 }
 
 
-void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face) 
+void BiCamera::Segmentation(Mat& img, PC::Ptr cloud, Rect face)
 {
-  // camera params
   const double kBMultipyF = 35981.122607;  // kBMultipyF = b*f
   const double kF = 599.065803;
   const double kCu = 369.703644;
   const double kCv = 223.365112;
-	
-  double x = 0.00;
-  double y = 0.00;
-  double z = 0.00;
-  double d_real = 0.0;
 
+  double d_real = 0.0;
+  
   // get the midpoint of the human face
   int u = face.y + face.height / 2;
   int v = face.x + face.width / 2;
@@ -368,9 +373,49 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   face_mid_point.x = (u - kCu) * face_mid_point.z / kF;
   face_mid_point.y = (v - kCv) * face_mid_point.z / kF;
   cout << "face_mid_point" << face_mid_point << endl;
-  
-  // convert depth image to point cloud (z-value has constraint)
+
+  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond(new pcl::ConditionAnd<pcl::PointXYZ>());
+  range_cond->addComparison(
+    pcl::FieldComparison<pcl::PointXYZ>::ConstPtr(
+      new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::LT, face_mid_point.z + 250))
+  );
+  range_cond->addComparison(
+    pcl::FieldComparison<pcl::PointXYZ>::ConstPtr(
+      new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::GT, 1000))
+  );
+  pcl::ConditionalRemoval<pcl::PointXYZ> condrem(range_cond);
+  condrem.setInputCloud(cloud);            
+  condrem.filter(*cloud);        
+
+  for (int i = 0; i < cloud->points.size(); ++i)
+    {
+      cloud->points[i].x /= SCALE; // divide SCALE in order to accelerate 
+      cloud->points[i].y /= SCALE;
+      cloud->points[i].z /= SCALE;
+    }
+
+  face_mid_point.x /= SCALE;
+  face_mid_point.y /= SCALE;
+  face_mid_point.z /= SCALE;
+}
+
+
+void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud) 
+{
+  // camera params
+  const double kBMultipyF = 35981.122607;  // kBMultipyF = b*f
+  const double kF = 599.065803;
+  const double kCu = 369.703644;
+  const double kCv = 223.365112;
+	
+  double x = 0.00;
+  double y = 0.00;
+  double z = 0.00;
+  double d_real = 0.0;
+
   int index = 0;
+
+  // convert depth image to point cloud (z-value has constraint)
   for (int u = 0; u < height; ++u)
     for (int v = 0; v < width; ++v)
       {
@@ -386,19 +431,12 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud, Rect face)
   	y = (v - kCv) * z / kF;
 
   	// store data to cloud
-	if (z > 1000 && z < face_mid_point.z + 250) // constraint z-value
-	  {
-  	    cloud->points[index].x = x / SCALE; // divide SCALE in order to accelerate 
-  	    cloud->points[index].y = y / SCALE;
-  	    cloud->points[index].z = z / SCALE;
-  	    ++index;
-	  }
+	cloud->points[index].x = x; // divide SCALE in order to accelerate 
+	cloud->points[index].y = y;
+	cloud->points[index].z = z;
+	index++;
       }
-  cloud->points.resize(index); // remove no-data points
-
-  face_mid_point.x /= SCALE;
-  face_mid_point.y /= SCALE;
-  face_mid_point.z /= SCALE;
+  cloud->points.resize(index);
 }
 
 
@@ -578,6 +616,7 @@ void BiCamera::ShowRviz()
 {
   PC::Ptr msg (new PC);
   PC::Ptr msg2 (new PC);
+  PC::Ptr msg3 (new PC);
 
   msg->header.frame_id = "map"; // necessary
   msg->height = cloud_rviz_1->points.size();
@@ -590,6 +629,12 @@ void BiCamera::ShowRviz()
   msg2->width = 1;
   msg2->is_dense = true;
   msg2->points.resize(cloud_rviz_2->points.size()); // necessary
+
+  msg3->header.frame_id = "map"; // necessary
+  msg3->height = cloud_rviz_3->points.size();
+  msg3->width = 1;
+  msg3->is_dense = true;
+  msg3->points.resize(cloud_rviz_3->points.size()); // necessary
 
   for (size_t i = 0; i < msg->points.size(); ++i)
    {
@@ -604,11 +649,20 @@ void BiCamera::ShowRviz()
       msg2->points[i].y = cloud_rviz_2->points[i].y / 255.0 * SCALE;
       msg2->points[i].z = cloud_rviz_2->points[i].z / 255.0 * SCALE;
     }
+
+  for (size_t i = 0; i < msg3->points.size (); ++i)
+    {
+      msg3->points[i].x = cloud_rviz_3->points[i].x / 255.0 * SCALE;
+      msg3->points[i].y = cloud_rviz_3->points[i].y / 255.0 * SCALE;
+      msg3->points[i].z = cloud_rviz_3->points[i].z / 255.0 * SCALE;
+    }
       
   pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
   pub.publish (msg);     
   pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
   pub2.publish (msg2);
+  pcl_conversions::toPCL(ros::Time::now(), msg3->header.stamp);
+  pub3.publish (msg3);
 }
 
 
