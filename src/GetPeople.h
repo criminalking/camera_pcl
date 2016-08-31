@@ -11,7 +11,6 @@
 #include "std_msgs/Int32MultiArray.h"
 
 // PCL includes
-#include <pcl/point_types.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/filters/conditional_removal.h>
@@ -52,7 +51,7 @@ static void ChatterCallback(const std_msgs::Int32MultiArray::ConstPtr& myMsg)
 class People
 {
  public:
- People(): width(752), height(480), loop_rate(new ros::Rate(4)) {
+ People(): width(752), height(480) {
     image_transport::ImageTransport it(nh_image);
     pub_image = it.advertise("camera/image_raw", 1);
     sub = nh_image.subscribe("faceCoord", 1000, ChatterCallback);

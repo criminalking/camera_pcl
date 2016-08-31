@@ -82,6 +82,7 @@ bool People::Equal(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
 
 bool People::TrackFace(Mat& left, Mat& disp, PC::Ptr cloud, pcl::PointXYZ& face_mid_point)
 {
+  loop_rate = new ros::Rate(4);
   // using Dlib-method to search for human face
   sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
   flag_sub = false;

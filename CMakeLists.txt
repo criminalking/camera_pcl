@@ -56,7 +56,7 @@ target_link_libraries(ProcessImage MoveSenseCamera)
 target_link_libraries(GetPeople FaceRecognition ${OpenCV_LIBS})
 
 rosbuild_add_executable(PoseRecognition src/PoseRecognition.cpp)
-target_link_libraries(  PoseRecognition  VL4IF CameraCtrl Camera MoveSenseCamera ProcessImage GetPeople ${OpenCV_LIBS} dlib)
+target_link_libraries(  PoseRecognition  VL4IF CameraCtrl Camera ProcessImage GetPeople ${OpenCV_LIBS} dlib)
 INCLUDE_DIRECTORIES(  ${OPENCV_INCLUDE_DIR} )
 
 #for boost

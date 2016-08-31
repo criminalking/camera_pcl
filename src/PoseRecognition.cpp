@@ -32,58 +32,36 @@ void BiCamera::FitPlane(PC::Ptr cloud)
   double pb = coefficients->values[1];
   double pc = coefficients->values[2];
   double pd = coefficients->values[3];
-	      
-  // compute errors
-  double error = 0.00; // sum of the distances (points to plane)
-  double ave = 0.00; // the average of the distance
-  for (int i = 0; i < area; ++i)
-    {
-      error += abs(pa * cloud->points[i].x + pb * cloud->points[i].y + pc * cloud->points[i].z + pd);
-      ave += abs(pa * cloud->points[i].x + pb * cloud->points[i].y + pc * cloud->points[i].z);
-    }
-  ave /= area;
-  error /= sqrt(pa * pa + pb * pb + pc * pc);
-  error /= area;	      
-  double distance = -coefficients->values[3]; // the z-value if the plane is horizontal
-	      
-  //  if (abs(ave - distance) <= 2 && pc > 0.9999) // insure answer is acceptable
-	//   {
-      cout << pa << " " << pb << " " << pc << " " << pd << std::endl;
-      cout << "error = " << error << " mm  ";
-      cout << "ave = " << ave << " mm  ";
-      // show z-axis distance
-      cout << "distance = " << distance << " mm" << std::endl;
-      //    }
+  cout << pa << " " << pb << " " << pc << " " << pd << std::endl;
 }
 
 
 void BiCamera::Init()
 {
   // ros publish
-  pub = nh.advertise<PC> ("points_compute", 1); 
-  pub2 = nh.advertise<PC> ("points_right", 1);
-  pub3 = nh.advertise<PC> ("points_test", 1);
-
-  // use camera
-  // process_image.OpenCamera();
+  pub_computed = nh.advertise<PC> ("points_computed", 1); 
+  pub_right = nh.advertise<PC> ("points_right", 1);
+  pub_test = nh.advertise<PC> ("points_test", 1);
 }
 
 
-void BiCamera::Run()
+void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use test images
 {
+  loop_rate = new ros::Rate(4);
+  if (flag == true)
+    process_image.OpenCamera(); // open camera
+  
   int num;
   int length = 9;
   int index = 0;
-
+  
   // test some error images
   int face_index[9] = {9, 17, 18, 32, 34, 42, 52, 58, 63};
-
-  // test all images
-  //int face_index[length];
-  //for (int i = 0; i < length; i++)
-  //  face_index[i] = i + 1;
   
-  loop_rate = new ros::Rate(4);
+  // test all images
+  // int face_index[length];
+  // for (int i = 0; i < length; i++)
+  //   face_index[i] = i + 1;
   
   // preprocess template
   while(true) 
@@ -93,15 +71,20 @@ void BiCamera::Run()
 
   while (nh.ok())
     {
-      // if use camera
-      Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map  
-      //process_image.GetImageFromCamera(left, disp);
+      Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
+      int ans; // the result of this frame
+      
+      if (flag == true)
+	process_image.GetImageFromCamera(left, disp);
+      else
+	{
+	  // read image
+	  if (index >= length) break;
+	  num = face_index[index];
+	  process_image.GetImage(left, disp, num, TEST); // read image from test directory
+	}
 
-      // read image
-      if (index >= length) break;
-      num = face_index[index];
-	  
-      process_image.GetImage(left, disp, num, TEST);
+      // show images
       imshow("left", left);
       imshow("disp", disp);
 
@@ -114,16 +97,29 @@ void BiCamera::Run()
   	  clock_t start, finish;
   	  double totaltime;
   	  start = clock();
-	  
-	  if (ProcessTest(left, disp, num) == false) // estimate test poses
+
+	  bool test_result = ProcessTest(left, disp, ans); // estimate test poses
+	  if (test_result == false) 
 	    ROS_WARN("Sorry, no poses are found.\n");
+	  else
+	    {
+	      if (flag == false) // check answer
+		{
+		  printf("This image is similiar to disp_%d", ans);
+		  if (ans == answer[num - 1]) printf("\n%d Right!!!!!!!!!!!!\n", num);
+		  else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
+		  if (answer[num - 1] - 1 >= 0 && answer[num - 1] - 1 < 10)
+		    *cloud_rviz_right = *temp_cloud_ptr[answer[num - 1] - 1];
+		}
+	      else
+		printf("This image is similiar to disp_%d", ans);
+	    }	    
 	  ++index;
-            
+           
   	  finish = clock();
   	  totaltime = (double)(finish - start);
-  	  cout << "\nrun time = " << totaltime / 1000.0 << "ms！" << endl;
+  	  cout << "\nrun time = " << totaltime / 1000.0 << "ms!" << endl;
 	}
-
       ShowRviz();
       
       loop_rate->sleep ();
@@ -180,7 +176,7 @@ bool BiCamera::ProcessTemplate()
 }
 
 
-bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num) 
+bool BiCamera::ProcessTest(Mat& left, Mat& disp, int& ans) 
 {
   // create temperary point clouds storaging data
   PC::Ptr cloud(new PC);
@@ -208,86 +204,9 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
   pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
   float z_range = face_mid_point.z - min_pt.z;
   cout << "z_range: " << z_range << endl;
-  
-  // match two point clouds using ICP(xy-plane) or some tricks(xyz-space)
-  PC::Ptr output(new PC);
-  float min_value = FLT_MAX;
-  int min_index = 0;
-  if (z_range < ZRANGE) // pose in xy-plane
-    {
-      Projection(cloud_normalized); // project to xy-plane
-      *cloud_rviz_3 = *cloud_normalized;
-      for (int i = 0; i < temp_xy_num; ++i)
-  	{      
-  	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
-  	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
-      
-  	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min_value)
-  	    {
-  	      min_value = (result1.score + result2.score) / 2;
-  	      min_index = i;
-  	    }
-  	}
-      if (min_value < 20)
-	{
-	  printf("This image is similiar to disp_%d  score: %f\n", min_index + 1, min_value);
-	  *cloud_rviz_1 = *temp_cloud_ptr[min_index];
-	  if (answer[num - 1] - 1 >= 0 && answer[num - 1] - 1 < 10)
-	    *cloud_rviz_2 = *temp_cloud_ptr[answer[num - 1] - 1];
-	  if (min_index + 1 == answer[num - 1]) printf("\n%d Right!!!!!!!!!!!!\n", num);
-	  else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
-	}
-      else
-	return false;
-    }
-  else // pose in xyz-space
-    {
-      Projection(cloud_normalized, 1); // project to yz-plane
-      pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
-      float xyz_z_range = max_pt.z - min_pt.z;
-      float xyz_y_range = max_pt.y - min_pt.y;
-      float y_max = min_pt.y;
-      float y_min = max_pt.y;
-      float y_sum = 0.0;
-      int y_num = 0;
 
-      for (size_t i = 0; i < cloud_normalized->points.size (); ++i)
-	{
-	  if (cloud_normalized->points[i].z - min_pt.z > 8 && cloud_normalized->points[i].z - min_pt.z < 12) // get points in a interval  and search for the y_range
-	    {
-	      if (cloud_normalized->points[i].y < y_min) y_min = cloud_normalized->points[i].y;
-	      else if (cloud_normalized->points[i].y > y_max) y_max = cloud_normalized->points[i].y;
-	    }
-	  else if (cloud_normalized->points[i].z - min_pt.z < xyz_z_range / 3)
-	    {
-	      y_sum += cloud_normalized->points[i].y;
-	      ++y_num;
-	    }
-	}
-      y_sum /= y_num;
-      
-      if (y_max - y_min > 0.5 * xyz_y_range)
-	{
-	  printf("This image is similiar to disp_9\n");
-	  if (answer[num - 1] == 9) printf("\n%d Right!!!!!!!!!!!!\n", num);
-	  else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
-	}
-      else
-	{
-	  if (y_sum > (min_pt.y + max_pt.y) / 2)
-	    {
-	      printf("This image is similiar to disp_10\n");
-	      if (answer[num - 1] == 10) printf("\n%d Right!!!!!!!!!!!!\n", num);
-	      else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
-	    }
-	  else
-	    {
-	      printf("This image is similiar to disp_8\n");
-	      if (answer[num - 1] == 8) printf("\n%d Right!!!!!!!!!!!!\n", num);
-	      else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
-	    }
-	}
-    }
+  if (PoseMatching(z_range, cloud_normalized, ans) == false)
+    return false;
   return true;
 }
 
@@ -425,6 +344,75 @@ BiCamera::ICP_result BiCamera::MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Pt
 }
 
 
+bool BiCamera::PoseMatching(float z_range, PC::Ptr cloud_normalized, int& ans)
+{
+  // match two point clouds using ICP(xy-plane) or some tricks(xyz-space)
+  PC::Ptr output(new PC);
+  float min_value = FLT_MAX;
+  int min_index = 0;
+  if (z_range < ZRANGE) // pose in xy-plane
+    {
+      Projection(cloud_normalized); // project to xy-plane
+      *cloud_rviz_test = *cloud_normalized;
+      for (int i = 0; i < temp_xy_num; ++i)
+  	{      
+  	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
+  	  BiCamera::ICP_result result2 = MatchTwoPc(cloud_normalized, temp_cloud_ptr[i], output);
+      
+  	  if (result1.conv == true && result2.conv == true && (result1.score + result2.score) / 2 <= min_value)
+  	    {
+  	      min_value = (result1.score + result2.score) / 2;
+  	      min_index = i;
+  	    }
+  	}
+      if (min_value < 20)
+	{
+	  printf("score: %f\n", min_value);
+	  ans = min_index + 1;
+	  *cloud_rviz_computed = *temp_cloud_ptr[ans - 1]; // show rviz
+	}
+      else
+	return false;
+    }
+  else // pose in xyz-space
+    {
+      Projection(cloud_normalized, 1); // project to yz-plane
+      pcl::PointXYZ min_pt, max_pt;
+      pcl::getMinMax3D(*cloud_normalized, min_pt, max_pt); // get minmum and maximum points in the z-axis
+      float xyz_z_range = max_pt.z - min_pt.z;
+      float xyz_y_range = max_pt.y - min_pt.y;
+      float y_max = min_pt.y;
+      float y_min = max_pt.y;
+      float y_sum = 0.0;
+      int y_num = 0;
+
+      for (size_t i = 0; i < cloud_normalized->points.size (); ++i)
+	{
+	  if (cloud_normalized->points[i].z - min_pt.z > 8 && cloud_normalized->points[i].z - min_pt.z < 12) // get points in a interval  and search for the y_range
+	    {
+	      if (cloud_normalized->points[i].y < y_min) y_min = cloud_normalized->points[i].y;
+	      else if (cloud_normalized->points[i].y > y_max) y_max = cloud_normalized->points[i].y;
+	    }
+	  else if (cloud_normalized->points[i].z - min_pt.z < xyz_z_range / 3)
+	    {
+	      y_sum += cloud_normalized->points[i].y;
+	      ++y_num;
+	    }
+	}
+      y_sum /= y_num;
+      
+      if (y_max - y_min > 0.5 * xyz_y_range)
+        ans = 9;
+      else
+	{
+	  if (y_sum > (min_pt.y + max_pt.y) / 2) ans = 10;
+	  else ans = 8;
+	}
+    }
+  return true;
+}
+
+
 void BiCamera::ShowRviz()
 {
   PC::Ptr msg (new PC);
@@ -432,50 +420,50 @@ void BiCamera::ShowRviz()
   PC::Ptr msg3 (new PC);
 
   msg->header.frame_id = "map"; // necessary
-  msg->height = cloud_rviz_1->points.size();
+  msg->height = cloud_rviz_computed->points.size();
   msg->width = 1;
   msg->is_dense = true;
-  msg->points.resize(cloud_rviz_1->points.size()); // necessary
+  msg->points.resize(cloud_rviz_computed->points.size()); // necessary
 
   msg2->header.frame_id = "map"; // necessary
-  msg2->height = cloud_rviz_2->points.size();
+  msg2->height = cloud_rviz_right->points.size();
   msg2->width = 1;
   msg2->is_dense = true;
-  msg2->points.resize(cloud_rviz_2->points.size()); // necessary
+  msg2->points.resize(cloud_rviz_right->points.size()); // necessary
 
   msg3->header.frame_id = "map"; // necessary
-  msg3->height = cloud_rviz_3->points.size();
+  msg3->height = cloud_rviz_test->points.size();
   msg3->width = 1;
   msg3->is_dense = true;
-  msg3->points.resize(cloud_rviz_3->points.size()); // necessary
+  msg3->points.resize(cloud_rviz_test->points.size()); // necessary
 
   for (size_t i = 0; i < msg->points.size(); ++i)
    {
-     msg->points[i].x = cloud_rviz_1->points[i].x / 255.0 * SCALE;
-     msg->points[i].y = cloud_rviz_1->points[i].y / 255.0 * SCALE;
-     msg->points[i].z = cloud_rviz_1->points[i].z / 255.0 * SCALE;
+     msg->points[i].x = cloud_rviz_computed->points[i].x / 255.0 * SCALE;
+     msg->points[i].y = cloud_rviz_computed->points[i].y / 255.0 * SCALE;
+     msg->points[i].z = cloud_rviz_computed->points[i].z / 255.0 * SCALE;
    }
 
   for (size_t i = 0; i < msg2->points.size (); ++i)
     {
-      msg2->points[i].x = cloud_rviz_2->points[i].x / 255.0 * SCALE;
-      msg2->points[i].y = cloud_rviz_2->points[i].y / 255.0 * SCALE;
-      msg2->points[i].z = cloud_rviz_2->points[i].z / 255.0 * SCALE;
+      msg2->points[i].x = cloud_rviz_right->points[i].x / 255.0 * SCALE;
+      msg2->points[i].y = cloud_rviz_right->points[i].y / 255.0 * SCALE;
+      msg2->points[i].z = cloud_rviz_right->points[i].z / 255.0 * SCALE;
     }
 
   for (size_t i = 0; i < msg3->points.size (); ++i)
     {
-      msg3->points[i].x = cloud_rviz_3->points[i].x / 255.0 * SCALE;
-      msg3->points[i].y = cloud_rviz_3->points[i].y / 255.0 * SCALE;
-      msg3->points[i].z = cloud_rviz_3->points[i].z / 255.0 * SCALE;
+      msg3->points[i].x = cloud_rviz_test->points[i].x / 255.0 * SCALE;
+      msg3->points[i].y = cloud_rviz_test->points[i].y / 255.0 * SCALE;
+      msg3->points[i].z = cloud_rviz_test->points[i].z / 255.0 * SCALE;
     }
       
   pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
-  pub.publish (msg);     
+  pub_computed.publish(msg);     
   pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
-  pub2.publish (msg2);
+  pub_right.publish(msg2);
   pcl_conversions::toPCL(ros::Time::now(), msg3->header.stamp);
-  pub3.publish (msg3);
+  pub_test.publish(msg3);
 }
 
 
@@ -485,5 +473,5 @@ int main (int argc, char** argv)
   
   BiCamera cam;
   cam.Init();
-  cam.Run();
+  cam.Run(IMAGE);
 }
