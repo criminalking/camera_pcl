@@ -25,6 +25,7 @@
 
 // my other codes
 #include "FaceRecognition.h"
+#include "ShowRviz.h"
 
 #define SCALE 20.0 // reduce the value of data in order to accelerate
 
@@ -67,7 +68,7 @@ class People
   void Segmentation(Mat& depth_image, PC::Ptr cloud, Rect face, pcl::PointXYZ& face_mid_point); // constraint point clouds in a z_range and compress point clouds
 
   Face search_face; // search human face
-
+  Rviz show_rviz; // show rviz
   int width; // width of image
   int height; // height of image
 

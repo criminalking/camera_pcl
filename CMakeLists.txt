@@ -54,7 +54,7 @@ add_library(GetPeople src/GetPeople.cpp)
 add_library(ShowRviz src/ShowRviz.cpp)
 
 target_link_libraries(ProcessImage MoveSenseCamera)
-target_link_libraries(GetPeople FaceRecognition ${OpenCV_LIBS})
+target_link_libraries(GetPeople FaceRecognition ShowRviz ${OpenCV_LIBS})
 
 rosbuild_add_executable(PoseRecognition src/PoseRecognition.cpp)
 target_link_libraries(  PoseRecognition  VL4IF CameraCtrl Camera ProcessImage GetPeople ShowRviz ${OpenCV_LIBS} dlib)

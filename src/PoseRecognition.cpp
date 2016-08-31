@@ -53,7 +53,7 @@ void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use te
   int index = 0;
   
   // test some error images
-  int face_index[9] = {9, 17, 18, 32, 34, 42, 52, 58, 63};
+  int face_index[9] = {8, 17, 18, 32, 34, 42, 52, 58, 63};
   
   // test all images
   //int face_index[length];
@@ -162,12 +162,14 @@ bool BiCamera::ProcessTemplate()
       cout << "z_range: " << z_range << endl;
       if (z_range < 0) return false;
       else if (z_range < ZRANGE) // x-y pose(could ignore z-axis)
-       	Projection(cloud_normalized); // project to xy-plane
+	{
+	  Projection(cloud_normalized); // project to xy-plane
+	}
       //else // x-y-z pose
       // 	Projection(cloud_normalized, 1); // project to yz-plane
-
+      
       // store template point clouds
-      temp_cloud_ptr.push_back(cloud_normalized); 
+      temp_cloud_ptr.push_back(cloud_normalized);
     }
   printf("ProcessTemplate over.\n");
   return true;
@@ -188,8 +190,6 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int& ans)
 
   // depth image convert to point clouds
   DepthImageToPc(disp, cloud);
-  
-  show_rviz.SetRvizTest(cloud);
 
   // get people cluster
   if (get_people.TrackFace(left, disp, cloud, face_mid_point) == false) 
@@ -353,7 +353,7 @@ bool BiCamera::PoseMatching(float z_range, PC::Ptr cloud_normalized, int& ans)
   if (z_range < ZRANGE) // pose in xy-plane
     {
       Projection(cloud_normalized); // project to xy-plane
-      
+      show_rviz.SetRvizTest(cloud_normalized);
       for (int i = 0; i < temp_xy_num; ++i)
   	{      
   	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);

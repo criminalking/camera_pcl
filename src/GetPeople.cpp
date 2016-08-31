@@ -101,7 +101,7 @@ bool People::TrackFace(Mat& left, Mat& disp, PC::Ptr cloud, pcl::PointXYZ& face_
   // filter point clouds
   PC::Ptr cloud_filtered(new PC);
   if (Filter(cloud, cloud_filtered) == false) 
-    return false; 
+    return false;
 
   const float kClusterTolerance = 5.0;
   const int kMinClusterSize = 1000;
