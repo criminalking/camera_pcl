@@ -9,23 +9,17 @@
 #include <time.h>
 #include <ros/ros.h>
 
-#include "std_msgs/MultiArrayLayout.h"
-#include "std_msgs/MultiArrayDimension.h"
-#include "std_msgs/Int32MultiArray.h"
-
 // PCL includes
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl_ros/point_cloud.h>
-#include <pcl/filters/voxel_grid.h>
-#include <pcl/filters/conditional_removal.h>
-#include <pcl/kdtree/kdtree.h>
+
 #include <pcl/ModelCoefficients.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/segmentation/extract_clusters.h>
+
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/pca.h>
@@ -41,9 +35,9 @@
 #include "opencv2/highgui/highgui.hpp"
 
 // my other codes
-#include "FaceRecognition.h"
 #include "ProcessImage.h"
 #include "MoveSenseCamera.h"
+#include "GetPeople.h"
 
 using namespace std;
 using namespace cv;
@@ -57,8 +51,6 @@ using namespace cv;
 
 typedef pcl::PointCloud<pcl::PointXYZ> PC;
 
-bool flag_sub;
-int Arr[200];
 // right answer of 68 test images
 int answer[68] = {8, 10, 1, 2, 3, 4, 6, 5, 0, 10,
                   8, 9, 7, 1, 2, 4, 3, 6, 5, 9,
@@ -77,7 +69,7 @@ public:
     float score;
   };
 
- BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7), cloud_rviz_1(new PC), cloud_rviz_2(new PC), cloud_rviz_3(new PC){} 
+ BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7), cloud_rviz_1(new PC), cloud_rviz_2(new PC), cloud_rviz_3(new PC) {} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -88,31 +80,21 @@ public:
   
   void FitPlane(PC::Ptr cloud); // use point clouds to fit a plane
   void DepthImageToPc(Mat& depth_image, PC::Ptr cloud); // convert depth-image to point clouds
-  void Segmentation(Mat& depth_image, PC::Ptr cloud, Rect face); // constraint point clouds in a z_range and compress point clouds
-  bool GetPeople(PC::Ptr cloud); //  get people cluster
-  bool Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered); // filter point clouds
   void Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized); // normalize a point cloud, e.g. rotate, translate and scale
   void Projection(PC::Ptr cloud, int flag = 3); // project to plane(flag = 1: x, flag = 2: y, flag = 3: z)
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   void ShowRviz(); // show in rviz
-  bool Equal(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2); // compare two PointXYZ
 
 private:
-  Face search_face; // search human face
   Image process_image; // process image(get, save)
+  People get_people; // get people cluster
   
   // for ros(rviz)
   ros::NodeHandle nh;  
   ros::Publisher pub; // show rviz of computed template point clouds
   ros::Publisher pub2; // show rviz of right template point clouds
   ros::Publisher pub3; // show rviz of point clouds
-
-  // for ros(send and receive image)
-  ros::NodeHandle nh_image;
-  image_transport::Publisher pub_image;
-  ros::Subscriber sub;
-  
   ros::Rate *loop_rate;
 
   int width; // width of image

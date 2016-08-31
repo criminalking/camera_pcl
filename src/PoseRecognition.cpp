@@ -1,20 +1,6 @@
 #include "PoseRecognition.h"
 
 
-// Once get the message from package face_detection, this function is called
-static void ChatterCallback(const std_msgs::Int32MultiArray::ConstPtr& myMsg)
-{
-  int i = 0;
-  //the data is being stored inside an array
-  for(std::vector<int>::const_iterator it = myMsg->data.begin(); it != myMsg->data.end(); ++it)
-  {
-    Arr[i] = *it;
-    i++;
-  }
-  flag_sub = true;
-}
-
-
 BiCamera::~BiCamera()
 {
   delete loop_rate;
@@ -77,14 +63,9 @@ void BiCamera::Init()
   pub = nh.advertise<PC> ("points_compute", 1); 
   pub2 = nh.advertise<PC> ("points_right", 1);
   pub3 = nh.advertise<PC> ("points_test", 1);
-  
-  image_transport::ImageTransport it(nh_image);
-  pub_image = it.advertise("camera/image_raw", 1);
-  sub = nh_image.subscribe("faceCoord", 1000, ChatterCallback);
 
-  flag_sub = false; // a trigger
-
-  //process_image.OpenCamera();
+  // use camera
+  // process_image.OpenCamera();
 }
 
 
@@ -171,35 +152,14 @@ bool BiCamera::ProcessTemplate()
 
       // depth image convert to point clouds
       DepthImageToPc(disp, cloud);
-
-      // using Haar-method to search for human face
-      // Rect human_face = search_face.Haar(left); 
-
-      // using Dlib-method to search for human face
-      sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
-      flag_sub = false;
-      while (flag_sub == false)
-      	{
-      	  pub_image.publish(msg); // send image to human_face_detection_package
-      	  loop_rate->sleep();
-	  ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
-      	}
-      Rect human_face = search_face.Dlib(Arr);
-      if (human_face == cv::Rect(0, 0, 0, 0)) return false; // no human face
-      Segmentation(disp, cloud, human_face);
       
-      // filter point clouds
-      PC::Ptr cloud_filtered(new PC);
-      if (Filter(cloud, cloud_filtered) == false) 
-	return false; 
-
       // get people cluster
-      if (GetPeople(cloud_filtered) == false) 
+      if (get_people.TrackFace(left, disp, cloud, face_mid_point) == false) 
 	return false;
       
       // normalize point clouds
       PC::Ptr cloud_normalized(new PC);
-      Normalize(cloud_filtered, cloud_normalized);
+      Normalize(cloud, cloud_normalized);
 
       // compute z_range
       pcl::PointXYZ min_pt, max_pt;
@@ -232,36 +192,16 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
   // median filtering
   medianBlur(disp, disp, 9);
 
-  // using Haar-method to search for human face
-  // Rect human_face = search_face.Haar(left); 
-
-  // using Dlib-method to search for human face
-  sensor_msgs::ImagePtr msg = cv_bridge::CvImage(std_msgs::Header(), "mono8", left).toImageMsg();
-  flag_sub = false;
-  while (flag_sub == false)
-    {
-      pub_image.publish(msg); // send image to human_face_detection_package
-      loop_rate->sleep(); 
-      ros::spinOnce(); // Attention: this line should be set at last, otherwise some errors exist
-    }
-  Rect human_face = search_face.Dlib(Arr);
-  if (human_face == cv::Rect(0, 0, 0, 0)) return false; // no human face
-
   // depth image convert to point clouds
   DepthImageToPc(disp, cloud);
-  Segmentation(disp, cloud, human_face);
-
-  // filter point clouds
-  PC::Ptr cloud_filtered(new PC);
-  if (Filter(cloud, cloud_filtered) == false) return false;
 
   // get people cluster
-  if (GetPeople(cloud_filtered) == false) 
+  if (get_people.TrackFace(left, disp, cloud, face_mid_point) == false) 
     return false;
 
   // normalize point cloud
   PC::Ptr cloud_normalized (new PC);
-  Normalize(cloud_filtered, cloud_normalized);
+  Normalize(cloud, cloud_normalized);
 
   // compute the distance from face to the frontest part of the human body
   pcl::PointXYZ min_pt, max_pt;
@@ -352,54 +292,6 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int num)
 }
 
 
-void BiCamera::Segmentation(Mat& img, PC::Ptr cloud, Rect face)
-{
-  const double kBMultipyF = 35981.122607;  // kBMultipyF = b*f
-  const double kF = 599.065803;
-  const double kCu = 369.703644;
-  const double kCv = 223.365112;
-
-  double d_real = 0.0;
-  
-  // get the midpoint of the human face
-  int u = face.y + face.height / 2;
-  int v = face.x + face.width / 2;
-  int d = img.at<uchar>(u, v) + 1.0; // avoid zero
-  if(d < 128)
-    d_real = d / 4.0;
-  else
-    d_real = (d * 2 - 128) / 4.0;
-  face_mid_point.z = kBMultipyF / d_real;
-  face_mid_point.x = (u - kCu) * face_mid_point.z / kF;
-  face_mid_point.y = (v - kCv) * face_mid_point.z / kF;
-  cout << "face_mid_point" << face_mid_point << endl;
-
-  pcl::ConditionAnd<pcl::PointXYZ>::Ptr range_cond(new pcl::ConditionAnd<pcl::PointXYZ>());
-  range_cond->addComparison(
-    pcl::FieldComparison<pcl::PointXYZ>::ConstPtr(
-      new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::LT, face_mid_point.z + 250))
-  );
-  range_cond->addComparison(
-    pcl::FieldComparison<pcl::PointXYZ>::ConstPtr(
-      new pcl::FieldComparison<pcl::PointXYZ>("z", pcl::ComparisonOps::GT, 1000))
-  );
-  pcl::ConditionalRemoval<pcl::PointXYZ> condrem(range_cond);
-  condrem.setInputCloud(cloud);            
-  condrem.filter(*cloud);        
-
-  for (int i = 0; i < cloud->points.size(); ++i)
-    {
-      cloud->points[i].x /= SCALE; // divide SCALE in order to accelerate 
-      cloud->points[i].y /= SCALE;
-      cloud->points[i].z /= SCALE;
-    }
-
-  face_mid_point.x /= SCALE;
-  face_mid_point.y /= SCALE;
-  face_mid_point.z /= SCALE;
-}
-
-
 void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud) 
 {
   // camera params
@@ -440,87 +332,8 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
 }
 
 
-bool BiCamera::GetPeople(PC::Ptr cloud)
-{
-  const float kClusterTolerance = 5.0;
-  const int kMinClusterSize = 1000;
-  const int kMaxClusterSize = 20000;
-  
-  // search for connected domain(cluster) to remove ground or wall
-  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
-  tree->setInputCloud(cloud);
-
-  std::vector<pcl::PointIndices> cluster_indices;
-  pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
-  ec.setClusterTolerance(kClusterTolerance); // tolerant distance
-  ec.setMinClusterSize(kMinClusterSize); // minimum cluster size
-  ec.setMaxClusterSize(kMaxClusterSize); // maximum cluster size
-  ec.setSearchMethod(tree);
-  ec.setInputCloud(cloud);
-  ec.extract(cluster_indices);
-
-  bool flag;
-  int num = 0;
-
-  if (cluster_indices.size() == 0)
-    {
-      ROS_WARN("No people cluster.\n");
-      return false;
-    }
-  else
-    { 
-      for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin(); it != cluster_indices.end(); ++it)
-  	{
-  	  PC::Ptr cloud_cluster (new PC);
-  	  flag = false;
-  	  for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
-  	    {
-  	      cloud_cluster->points.push_back(cloud->points[*pit]);
-  	      if (Equal(cloud->points[*pit], face_mid_point) == true) // the face_mid_point maybe be filtered
-		{
-		  flag = true; // this cluster contains the midpoint
-		  ++num;
-		}
-  	    }
-  	  if (flag == true && num > 50)
-  	    {
-  	      cloud_cluster->width = cloud_cluster->points.size();
-  	      cloud_cluster->height = 1;
-  	      cloud_cluster->is_dense = true;
-  	      *cloud = *cloud_cluster;
-	      break;
-  	    }
-  	}
-      if (flag == false)
-	{
-	  ROS_WARN("No people cluster.\n"); // midpoint is not in valid clusters
-	  return false;
-	}
-    }
-  return true;
-}
-
-
-bool BiCamera::Filter(const PC::Ptr cloud, PC::Ptr cloud_filtered)
-{
-  const float kFilterSize = 1.2;
-  pcl::VoxelGrid<pcl::PointXYZ> vg;
-  vg.setInputCloud(cloud);
-  vg.setLeafSize(kFilterSize, kFilterSize, kFilterSize);
-  vg.filter(*cloud_filtered);
-  cout << "Filter: " << cloud->points.size() << " " << cloud_filtered->points.size() << endl;
-  if (cloud_filtered->points.size() > 10000 || cloud_filtered->points.size() < 1000)
-    {
-      ROS_WARN("Filtering failed.\n");
-      return false;
-    }
-  else return true;
-}
-
-
 void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
 {
-  const float kHeadScale = 9;
   // first: rotate using PCA
   // pcl::PCA<pcl::PointXYZ> pca(*cloud);
   // Eigen::Matrix3f eigen_vector = pca.getEigenVectors();
@@ -541,7 +354,7 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
   float y_offset = face_mid_point.y * scale; 
   
   // all points should multiple scale
-  for (int i = 0; i < cloud->points.size(); ++i)
+  for (size_t i = 0; i < cloud->points.size(); ++i)
     {
       cloud_transformed->points[i].x *= scale;
       cloud_transformed->points[i].y *= scale;
@@ -563,13 +376,13 @@ void BiCamera::Normalize(PC::Ptr cloud, PC::Ptr cloud_normalized)
 void BiCamera::Projection(PC::Ptr cloud, int flag)
 {
   if (flag == 1)
-    for (int i = 0; i < cloud->points.size(); ++i)
+    for (size_t i = 0; i < cloud->points.size(); ++i)
       cloud->points[i].x = 0;
   else if (flag == 2)
-    for (int i = 0; i < cloud->points.size(); ++i)
+    for (size_t i = 0; i < cloud->points.size(); ++i)
       cloud->points[i].y = 0;
   else if (flag == 3)
-    for (int i = 0; i < cloud->points.size(); ++i)
+    for (size_t i = 0; i < cloud->points.size(); ++i)
       cloud->points[i].z = 0;   
 }
 
@@ -663,14 +476,6 @@ void BiCamera::ShowRviz()
   pub2.publish (msg2);
   pcl_conversions::toPCL(ros::Time::now(), msg3->header.stamp);
   pub3.publish (msg3);
-}
-
-
-bool BiCamera::Equal(const pcl::PointXYZ& pt, const pcl::PointXYZ& pt2)
-{
-  if (abs(pt2.x - pt.x) < 5 && abs(pt2.y - pt.y) < 5 && abs(pt2.z - pt.z) < 5)
-    return true;
-  else return false;
 }
 
 
