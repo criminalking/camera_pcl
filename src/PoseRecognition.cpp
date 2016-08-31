@@ -1,5 +1,5 @@
 #include "PoseRecognition.h"
-
+// FIXME: should add config file
 
 BiCamera::~BiCamera()
 {
@@ -38,16 +38,13 @@ void BiCamera::FitPlane(PC::Ptr cloud)
 
 void BiCamera::Init()
 {
-  // ros publish
-  pub_computed = nh.advertise<PC> ("points_computed", 1); 
-  pub_right = nh.advertise<PC> ("points_right", 1);
-  pub_test = nh.advertise<PC> ("points_test", 1);
 }
 
 
 void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use test images
 {
   loop_rate = new ros::Rate(4);
+
   if (flag == true)
     process_image.OpenCamera(); // open camera
   
@@ -59,9 +56,9 @@ void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use te
   int face_index[9] = {9, 17, 18, 32, 34, 42, 52, 58, 63};
   
   // test all images
-  // int face_index[length];
-  // for (int i = 0; i < length; i++)
-  //   face_index[i] = i + 1;
+  //int face_index[length];
+  //for (int i = 0; i < length; i++)
+  //  face_index[i] = i + 1;
   
   // preprocess template
   while(true) 
@@ -69,7 +66,7 @@ void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use te
       if (ProcessTemplate() == true) break;
     }
 
-  while (nh.ok())
+  while(1)
     {
       Mat left(height, width, CV_8UC1), disp(height, width, CV_8UC1); // disp is the disparity map
       int ans; // the result of this frame
@@ -109,7 +106,7 @@ void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use te
 		  if (ans == answer[num - 1]) printf("\n%d Right!!!!!!!!!!!!\n", num);
 		  else printf("\n%d Wrong!!!!!!!!!!!!!\n", num);
 		  if (answer[num - 1] - 1 >= 0 && answer[num - 1] - 1 < 10)
-		    *cloud_rviz_right = *temp_cloud_ptr[answer[num - 1] - 1];
+		    show_rviz.SetRvizRight(temp_cloud_ptr[answer[num - 1] - 1]);
 		}
 	      else
 		printf("This image is similiar to disp_%d", ans);
@@ -120,7 +117,8 @@ void BiCamera::Run(bool flag) // flag == true: use camera, flag == false: use te
   	  totaltime = (double)(finish - start);
   	  cout << "\nrun time = " << totaltime / 1000.0 << "ms!" << endl;
 	}
-      ShowRviz();
+      
+      show_rviz.ShowRviz();
       
       loop_rate->sleep ();
       ros::spinOnce ();
@@ -190,6 +188,8 @@ bool BiCamera::ProcessTest(Mat& left, Mat& disp, int& ans)
 
   // depth image convert to point clouds
   DepthImageToPc(disp, cloud);
+  
+  show_rviz.SetRvizTest(cloud);
 
   // get people cluster
   if (get_people.TrackFace(left, disp, cloud, face_mid_point) == false) 
@@ -242,7 +242,7 @@ void BiCamera::DepthImageToPc(Mat& img, PC::Ptr cloud)
   	y = (v - kCv) * z / kF;
 
   	// store data to cloud
-	cloud->points[index].x = x; // divide SCALE in order to accelerate 
+	cloud->points[index].x = x; 
 	cloud->points[index].y = y;
 	cloud->points[index].z = z;
 	index++;
@@ -353,7 +353,7 @@ bool BiCamera::PoseMatching(float z_range, PC::Ptr cloud_normalized, int& ans)
   if (z_range < ZRANGE) // pose in xy-plane
     {
       Projection(cloud_normalized); // project to xy-plane
-      *cloud_rviz_test = *cloud_normalized;
+      
       for (int i = 0; i < temp_xy_num; ++i)
   	{      
   	  BiCamera::ICP_result result1 = MatchTwoPc(temp_cloud_ptr[i], cloud_normalized, output);
@@ -369,7 +369,7 @@ bool BiCamera::PoseMatching(float z_range, PC::Ptr cloud_normalized, int& ans)
 	{
 	  printf("score: %f\n", min_value);
 	  ans = min_index + 1;
-	  *cloud_rviz_computed = *temp_cloud_ptr[ans - 1]; // show rviz
+	  show_rviz.SetRvizComputed(temp_cloud_ptr[ans - 1]); // show rviz
 	}
       else
 	return false;
@@ -410,60 +410,6 @@ bool BiCamera::PoseMatching(float z_range, PC::Ptr cloud_normalized, int& ans)
 	}
     }
   return true;
-}
-
-
-void BiCamera::ShowRviz()
-{
-  PC::Ptr msg (new PC);
-  PC::Ptr msg2 (new PC);
-  PC::Ptr msg3 (new PC);
-
-  msg->header.frame_id = "map"; // necessary
-  msg->height = cloud_rviz_computed->points.size();
-  msg->width = 1;
-  msg->is_dense = true;
-  msg->points.resize(cloud_rviz_computed->points.size()); // necessary
-
-  msg2->header.frame_id = "map"; // necessary
-  msg2->height = cloud_rviz_right->points.size();
-  msg2->width = 1;
-  msg2->is_dense = true;
-  msg2->points.resize(cloud_rviz_right->points.size()); // necessary
-
-  msg3->header.frame_id = "map"; // necessary
-  msg3->height = cloud_rviz_test->points.size();
-  msg3->width = 1;
-  msg3->is_dense = true;
-  msg3->points.resize(cloud_rviz_test->points.size()); // necessary
-
-  for (size_t i = 0; i < msg->points.size(); ++i)
-   {
-     msg->points[i].x = cloud_rviz_computed->points[i].x / 255.0 * SCALE;
-     msg->points[i].y = cloud_rviz_computed->points[i].y / 255.0 * SCALE;
-     msg->points[i].z = cloud_rviz_computed->points[i].z / 255.0 * SCALE;
-   }
-
-  for (size_t i = 0; i < msg2->points.size (); ++i)
-    {
-      msg2->points[i].x = cloud_rviz_right->points[i].x / 255.0 * SCALE;
-      msg2->points[i].y = cloud_rviz_right->points[i].y / 255.0 * SCALE;
-      msg2->points[i].z = cloud_rviz_right->points[i].z / 255.0 * SCALE;
-    }
-
-  for (size_t i = 0; i < msg3->points.size (); ++i)
-    {
-      msg3->points[i].x = cloud_rviz_test->points[i].x / 255.0 * SCALE;
-      msg3->points[i].y = cloud_rviz_test->points[i].y / 255.0 * SCALE;
-      msg3->points[i].z = cloud_rviz_test->points[i].z / 255.0 * SCALE;
-    }
-      
-  pcl_conversions::toPCL(ros::Time::now(), msg->header.stamp);
-  pub_computed.publish(msg);     
-  pcl_conversions::toPCL(ros::Time::now(), msg2->header.stamp);
-  pub_right.publish(msg2);
-  pcl_conversions::toPCL(ros::Time::now(), msg3->header.stamp);
-  pub_test.publish(msg3);
 }
 
 

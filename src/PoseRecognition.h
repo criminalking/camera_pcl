@@ -28,6 +28,7 @@
 // my other codes
 #include "ProcessImage.h"
 #include "GetPeople.h"
+#include "ShowRviz.h"
 
 using namespace std;
 using namespace cv;
@@ -61,7 +62,7 @@ public:
     float score;
   };
 
- BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7), cloud_rviz_computed(new PC), cloud_rviz_right(new PC), cloud_rviz_test(new PC) {} 
+ BiCamera(): width(752), height(480), temp_num(10), temp_xy_num(7) {} 
   ~BiCamera();
   
   void Init(); // initialize
@@ -78,16 +79,12 @@ private:
   void Transform(PC::Ptr cloud, PC::Ptr cloud_transformed, float theta, Eigen::Matrix3d m); // transform a point cloud, theta should be radian
   ICP_result MatchTwoPc(PC::Ptr target, PC::Ptr source, PC::Ptr output); // using ICP to match two point clouds(registration)
   bool PoseMatching(float z_range, PC::Ptr cloud_normalized, int& ans); // search for the similarest pose 
-  void ShowRviz(); // show in rviz
   
   Image process_image; // process image(get, save)
   People get_people; // get people cluster
+  Rviz show_rviz; // show rviz
   
   // for ros(rviz)
-  ros::NodeHandle nh;  
-  ros::Publisher pub_computed; // show rviz of computed template point clouds
-  ros::Publisher pub_right; // show rviz of right template point clouds
-  ros::Publisher pub_test; // show rviz of point clouds
   ros::Rate *loop_rate;
 
   int width; // width of image
@@ -97,11 +94,6 @@ private:
 
   vector < PC::Ptr, Eigen::aligned_allocator<PC::Ptr> > temp_cloud_ptr; // store template point clouds
   pcl::PointXYZ face_mid_point; // store midpoint of the face
-
-  // show rviz
-  PC::Ptr cloud_rviz_computed;
-  PC::Ptr cloud_rviz_right;
-  PC::Ptr cloud_rviz_test;
 };
 
 #endif // POSERECOGNITION_H_
