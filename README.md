@@ -18,7 +18,7 @@
  (**open package my_pcl_tutorial**)
 * rosrun rviz rviz
  
- (**if you want to use rviz to show point clouds **)
+ (**if you want to use rviz to show point clouds**)
 
 ----
 ## Pre-requisite
