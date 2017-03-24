@@ -11,7 +11,7 @@ void BiCamera::FitPlane(PC::Ptr cloud)
 {
   double area = cloud->points.size();
   const float kDistanceThreshold = 0.01;
-  
+
   // fitting a plane(use point clouds)
   pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
   pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
@@ -23,7 +23,7 @@ void BiCamera::FitPlane(PC::Ptr cloud)
   seg.setModelType (pcl::SACMODEL_PLANE);
   seg.setMethodType (pcl::SAC_RANSAC);
   seg.setDistanceThreshold (kDistanceThreshold);
-	      
+
   seg.setInputCloud (cloud);
   seg.segment (*inliers, *coefficients);
 
